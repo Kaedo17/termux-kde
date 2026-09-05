@@ -55,6 +55,7 @@ DEBIAN_FRONTEND=noninteractive pkg install -y \
     spectacle \
     systemsettings \
     breeze \
+    breeze-gtk \
     oxygen \
     kmenuedit \
     kscreen \
@@ -90,12 +91,44 @@ mkdir -p ~/bin
 cat > ~/bin/plasma << 'PLASMA_SCRIPT'
 #!/data/data/com.termux/files/usr/bin/bash
 
-# Kill any existing X11 or virgl processes
-kill -9 $(pgrep -f "termux.x11") 2>/dev/null
-kill -9 $(pgrep -f "Xwayland") 2>/dev/null
-kill -9 $(pgrep -f "virgl_test_server_android") 2>/dev/null
-kill -9 $(pgrep -f "startplasma") 2>/dev/null
-kill -9 $(pgrep -f "picom") 2>/dev/null
+# plasma - Start/Stop KDE Plasma with GPU acceleration on Termux X11
+# Usage: plasma [start|stop]
+
+stop_plasma() {
+    echo "Shutting down KDE Plasma..."
+
+    # Try graceful shutdown first (timeout in case it hangs)
+    timeout 3 plasma-shutdown 2>/dev/null
+    sleep 1
+
+    # Kill ALL KDE/Plasma processes
+    pkill -9 -f "startplasma|plasmashell|plasma_session|kwin_x11|kded6|ksmserver|kglobalaccel|powerdevil|kaccess|kscreen|xembedsniproxy|kactivitymanagerd|kwalletd6|baloorunner|gmenudbusmenuproxy|polkit.*kde|xdg-desktop-portal-kde|krunner|ksplash|kcminit|kaccess" 2>/dev/null
+
+    # Kill any remaining dbus-session children from plasma
+    pkill -9 -f "dbus-daemon.*--session" 2>/dev/null
+
+    # Kill compositor and GPU server
+    killall -9 picom 2>/dev/null
+    killall -9 virgl_test_server_android 2>/dev/null
+
+    # Kill X11 server
+    pkill -9 -f termux-x11 2>/dev/null
+
+    # Stop audio
+    pulseaudio --kill 2>/dev/null
+
+    sleep 1
+    echo "Done."
+}
+
+if [ "$1" = "stop" ]; then
+    stop_plasma
+    exit 0
+fi
+
+# --- Start ---
+# Kill any existing processes
+stop_plasma
 sleep 1
 
 # Start PulseAudio
@@ -105,12 +138,15 @@ pulseaudio --start \
   --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
   --exit-idle-time=-1
 
-# GPU acceleration env vars (Mali GPU)
+# GPU acceleration env vars (Mali GPU - Samsung Tab S11)
 export GALLIUM_DRIVER=virpipe
 export MESA_GL_VERSION_OVERRIDE=4.3
 export MESA_GLES_VERSION_OVERRIDE=3.0
 export MESA_NO_ERROR=1
 export vblank_mode=0
+
+# Disable GTK Client-Side Decorations (use KWin server-side Breeze instead)
+export GTK_CSD=0
 
 # Start virgl server
 virgl_test_server_android &>/dev/null &
@@ -132,7 +168,7 @@ export PULSE_SERVER=127.0.0.1
 dbus-run-session startplasma-x11 &>/dev/null &
 sleep 2
 
-# Picom compositor for shadows
+# Picom compositor
 picom --config ~/.config/picom.conf &>/dev/null &
 
 exit 0
