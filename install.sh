@@ -137,6 +137,7 @@ gpu_label() {
 # ============================================================
 
 SETUP_CONF="$HOME/.local/share/plasma-setup.conf"
+HW_CONF="$HOME/.local/share/plasma-hw.conf"
 
 load_setup_conf() {
     if [ -f "$SETUP_CONF" ]; then
