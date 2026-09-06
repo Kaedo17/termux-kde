@@ -32,7 +32,7 @@ info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
-total_steps=13
+total_steps=14
 
 step_done() {
     grep -q "^step_$1=done$" "$STATE_FILE" 2>/dev/null
@@ -340,6 +340,11 @@ case "$QT_BACKEND" in
         ;;
 esac
 
+# LD_PRELOAD for username override
+if [ -f "$HOME/.local/lib/termux-user.so" ]; then
+    export LD_PRELOAD="$HOME/.local/lib/termux-user.so${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+
 export $HW_ENV
 export vblank_mode=0
 export GTK_CSD=0
@@ -489,6 +494,11 @@ case "$QT_BACKEND" in
         ;;
 esac
 
+# LD_PRELOAD for username override
+if [ -f "$HOME/.local/lib/termux-user.so" ]; then
+    export LD_PRELOAD="$HOME/.local/lib/termux-user.so${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+
 export DISPLAY=:0
 export PULSE_SERVER=127.0.0.1
 export vblank_mode=0
@@ -534,6 +544,7 @@ gpu_label() {
 CURRENT_MODE="angle-gl"
 CURRENT_BACKEND="vulkan"
 CURRENT_USER="kemji"
+CURRENT_TERMUX_USER=$(grep "^TERMUX_USER=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
 if [ -f "$HW_CONF" ]; then
     CURRENT_MODE=$(grep "^HW_MODE=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "angle-gl")
     CURRENT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "vulkan")
@@ -552,7 +563,7 @@ echo ""
 echo "  1) Hardware Acceleration  [$CURRENT_MODE]"
 echo "  2) Qt Rendering Backend   [$CURRENT_BACKEND]"
 echo "  3) Proot Username         [$CURRENT_USER]"
-echo "  4) Termux Username        [${USER:-u0_a337}]"
+echo "  4) Termux Username        [${CURRENT_TERMUX_USER:-$(id -un)}]"
 echo ""
 read -rp "Select [1-4] (q=cancel): " SECTION
 echo ""
@@ -642,12 +653,14 @@ case "$SECTION" in
         echo "--- Termux Username ---"
         echo ""
         echo "Changes the username shown in your terminal and KDE."
-        echo "Current username: ${USER:-u0_a337}"
+        echo "Current username: ${CURRENT_TERMUX_USER:-$(id -un)}"
         echo ""
         read -rp "Enter new username (Enter to keep current): " NEW_NAME
-        if [ -n "$NEW_NAME" ]; then
+        if [ -n "$NEW_NAME" ] && [ "$NEW_NAME" != "${CURRENT_TERMUX_USER:-$(id -un)}" ]; then
+            mkdir -p "$(dirname "$HW_CONF")"
+            sed -i "s/^TERMUX_USER=.*/TERMUX_USER=$NEW_NAME/" "$HW_CONF" 2>/dev/null || echo "TERMUX_USER=$NEW_NAME" >> "$HW_CONF"
             if grep -q '^# ---- Termux User ----' ~/.bashrc 2>/dev/null; then
-                sed -i '/^# ---- Termux User ----$/,/^export LOGNAME=.*$/d' ~/.bashrc
+                sed -i '/^# ---- Termux User ----$/,/^export PS1=.*$/d' ~/.bashrc
             fi
             cat >> ~/.bashrc << USER_ADDON
 
@@ -658,7 +671,7 @@ export PS1="$NEW_NAME@\\h:\\w\\$ "
 USER_ADDON
             echo ""
             echo "Username changed to: $NEW_NAME"
-            echo "Open a new terminal or restart KDE to see the change."
+            echo "Restart plasma or open a new terminal to see the change."
         else
             echo "Username unchanged."
         fi
@@ -841,6 +854,68 @@ StartupNotify=true
 CODE_DESKTOP
 }
 
+step_14() {
+    mkdir -p ~/.local/lib
+    cat > ~/.local/lib/termux-user.c << 'TERMUX_USER_C'
+#define _GNU_SOURCE
+#include <pwd.h>
+#include <dlfcn.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#undef getpwuid
+
+static struct passwd orig_pwd;
+static char username[256];
+static int initialized = 0;
+
+static void init() {
+    if (initialized) return;
+    initialized = 1;
+
+    const char *home = getenv("HOME");
+    if (!home) return;
+    char path[512];
+    snprintf(path, sizeof(path), "%s/.local/share/plasma-hw.conf", home);
+
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "TERMUX_USER=", 12) == 0) {
+            char *val = line + 12;
+            val[strcspn(val, "\r\n")] = 0;
+            if (strlen(val) > 0) {
+                strncpy(username, val, sizeof(username) - 1);
+            }
+            break;
+        }
+    }
+    fclose(f);
+}
+
+struct passwd *getpwuid(uid_t uid) {
+    init();
+
+    typedef struct passwd *(*getpwuid_fn)(uid_t);
+    getpwuid_fn orig = (getpwuid_fn)dlsym(RTLD_NEXT, "getpwuid");
+    struct passwd *pw = orig(uid);
+
+    if (pw && username[0]) {
+        orig_pwd = *pw;
+        orig_pwd.pw_name = username;
+        return &orig_pwd;
+    }
+    return pw;
+}
+TERMUX_USER_C
+    DEBIAN_FRONTEND=noninteractive pkg install -y clang
+    clang -shared -fPIC -o ~/.local/lib/termux-user.so \
+        ~/.local/lib/termux-user.c -ldl
+}
+
 # ============================================================
 # Execute all steps
 # ============================================================
@@ -860,6 +935,7 @@ step_desc() {
         11) echo "Create VS Code desktop entry" ;;
         12) echo "Update .bashrc" ;;
         13) echo "Install Firefox and Code OSS" ;;
+        14) echo "Compile username override library" ;;
     esac
 }
 

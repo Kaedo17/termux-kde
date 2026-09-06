@@ -62,6 +62,11 @@ case "$QT_BACKEND" in
         ;;
 esac
 
+# LD_PRELOAD for username override
+if [ -f "$HOME/.local/lib/termux-user.so" ]; then
+    export LD_PRELOAD="$HOME/.local/lib/termux-user.so${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+
 export $HW_ENV
 export vblank_mode=0
 export GTK_CSD=0
