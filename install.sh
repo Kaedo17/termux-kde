@@ -405,9 +405,16 @@ sleep 1
 
 pulseaudio --kill 2>/dev/null
 sleep 1
-pulseaudio --start \
-  --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
-  --exit-idle-time=-1
+pulseaudio --start --exit-idle-time=-1
+
+# Detect actual PulseAudio Unix socket (TCP often fails on Termux)
+sleep 1
+PULSE_SOCK=\$(ls /data/data/com.termux/files/usr/tmp/pulse-*/native 2>/dev/null | head -1)
+if [ -n "\$PULSE_SOCK" ]; then
+    export PULSE_SERVER="unix:\$PULSE_SOCK"
+else
+    export PULSE_SERVER=127.0.0.1
+fi
 
 if [ -n "\$HW_SERVER" ]; then
     setsid \$HW_SERVER </dev/null >/dev/null 2>&1 &
@@ -596,10 +603,17 @@ if [ -f "\$HOME/.local/lib/termux-user.so" ] && grep -q "^TERMUX_USER=" "\$HW_CO
 fi
 
 export DISPLAY=:0
-export PULSE_SERVER=127.0.0.1
 export vblank_mode=0
 export GTK_CSD=0
 export XDG_RUNTIME_DIR=\${TMPDIR}
+
+# Detect actual PulseAudio Unix socket
+PULSE_SOCK=\$(ls /data/data/com.termux/files/usr/tmp/pulse-*/native 2>/dev/null | head -1)
+if [ -n "\$PULSE_SOCK" ]; then
+    export PULSE_SERVER="unix:\$PULSE_SOCK"
+else
+    export PULSE_SERVER=127.0.0.1
+fi
 
 # Use Wayland session for Anland, X11 for everything else
 if [ "\$HW_MODE" = "anland" ]; then

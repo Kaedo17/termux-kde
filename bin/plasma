@@ -157,9 +157,16 @@ sleep 1
 
 pulseaudio --kill 2>/dev/null
 sleep 1
-pulseaudio --start \
-  --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
-  --exit-idle-time=-1
+pulseaudio --start --exit-idle-time=-1
+
+# Detect actual PulseAudio Unix socket (TCP often fails on Termux)
+sleep 1
+PULSE_SOCK=$(ls /data/data/com.termux/files/usr/tmp/pulse-*/native 2>/dev/null | head -1)
+if [ -n "$PULSE_SOCK" ]; then
+    export PULSE_SERVER="unix:$PULSE_SOCK"
+else
+    export PULSE_SERVER=127.0.0.1
+fi
 
 if [ -n "$HW_SERVER" ]; then
     setsid $HW_SERVER </dev/null >/dev/null 2>&1 &
