@@ -71,6 +71,11 @@ esac
 # LD_PRELOAD for username override
 if [ -f "$HOME/.local/lib/termux-user.so" ] && grep -q "^TERMUX_USER=" "$HW_CONF" 2>/dev/null; then
     export LD_PRELOAD="$HOME/.local/lib/termux-user.so${LD_PRELOAD:+:$LD_PRELOAD}"
+    TERMUX_USER_VAL=$(grep "^TERMUX_USER=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+    if [ -n "$TERMUX_USER_VAL" ]; then
+        export USER="$TERMUX_USER_VAL"
+        export LOGNAME="$TERMUX_USER_VAL"
+    fi
 fi
 
 export $HW_ENV
