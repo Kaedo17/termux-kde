@@ -285,6 +285,8 @@ step_7() {
 
 HW_CONF="$HOME/.local/share/plasma-hw.conf"
 HW_MODE=$(grep "^HW_MODE=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "angle-gl")
+UPOWER_ENABLED=$(grep "^UPOWER_ENABLED=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+if [ -z "$UPOWER_ENABLED" ]; then UPOWER_ENABLED="true"; fi
 
 case "$HW_MODE" in
     software)
@@ -375,6 +377,7 @@ stop_plasma() {
         polkit-agent-helper-1 krunner ksplash kcminit 2>/dev/null
     killall -9 picom 2>/dev/null
     killall -9 virgl_test_server_android 2>/dev/null
+    killall -9 upowerd 2>/dev/null
     killall -9 anland 2>/dev/null
     killall -9 anland-compatible 2>/dev/null
     killall -9 kwin_wayland 2>/dev/null
@@ -454,6 +457,13 @@ if [ "\$HW_DISPLAY" = "anland" ]; then
     setsid ~/bin/.plasma-daemon </dev/null >/dev/null 2>&1 &
 
     sleep 5
+
+    # Disable UPower if user chose to
+    if [ "$UPOWER_ENABLED" = "false" ]; then
+        killall -9 upowerd 2>/dev/null
+        killall -9 org_kde_powerdevil 2>/dev/null
+    fi
+
     echo "KDE Plasma started (mode: anland, backend: \$QT_BACKEND). Check AnlandTermux app."
     exit 0
 fi
@@ -489,6 +499,13 @@ chmod +x ~/bin/.plasma-daemon
 setsid ~/bin/.plasma-daemon </dev/null >/dev/null 2>&1 &
 
 sleep 5
+
+# Disable UPower if user chose to (kills the noisy Termux:API spam)
+if [ "$UPOWER_ENABLED" = "false" ]; then
+    killall -9 upowerd 2>/dev/null
+    killall -9 org_kde_powerdevil 2>/dev/null
+fi
+
 echo "KDE Plasma started (mode: $HW_MODE, backend: $QT_BACKEND). Check Termux:X11 app."
 PLASMA_SCRIPT
     chmod +x ~/bin/plasma
@@ -624,10 +641,20 @@ gpu_label() {
     esac
 }
 
+upower_label() {
+    case "$1" in
+        true)  echo "enabled" ;;
+        false) echo "disabled" ;;
+        *)     echo "enabled" ;;
+    esac
+}
+
 # Read current config
 CURRENT_MODE="angle-gl"
 CURRENT_BACKEND="vulkan"
 CURRENT_USER="kemji"
+CURRENT_UPOWER=$(grep "^UPOWER_ENABLED=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+if [ -z "$CURRENT_UPOWER" ]; then CURRENT_UPOWER="true"; fi
 CURRENT_TERMUX_USER=$(grep "^TERMUX_USER=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
 if [ -f "$HW_CONF" ]; then
     CURRENT_MODE=$(grep "^HW_MODE=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "angle-gl")
@@ -648,8 +675,9 @@ echo "  1) Hardware Acceleration  [$CURRENT_MODE]"
 echo "  2) Qt Rendering Backend   [$CURRENT_BACKEND]"
 echo "  3) Proot Username         [$CURRENT_USER]"
 echo "  4) Termux Username        [${CURRENT_TERMUX_USER:-$(id -un)}]"
+echo "  5) UPower Battery         [$(upower_label "$CURRENT_UPOWER")]"
 echo ""
-read -rp "Select [1-4] (q=cancel): " SECTION
+read -rp "Select [1-5] (q=cancel): " SECTION
 echo ""
 
 case "$SECTION" in
@@ -785,6 +813,39 @@ USER_ADDON
             echo "Restart plasma or open a new terminal to see the change."
         else
             echo "Username unchanged."
+        fi
+        ;;
+    5)
+        echo "--- UPower Battery Monitoring ---"
+        echo ""
+        echo "UPower polls battery status via Termux:API, which causes repeated"
+        echo "errors on Android 14+ due to a known Termux:API bug:"
+        echo "  - 'Connection refused' (ResultReturner)"
+        echo "  - 'FLAG_ACTIVITY_NEW_TASK' (TermuxApiReceiver)"
+        echo ""
+        echo "These errors are harmless but noisy."
+        echo ""
+        echo "  1) Enable   - keep battery monitoring (default)"
+        echo "  2) Disable  - stop UPower, no more errors"
+        echo ""
+        read -rp "Select [1-2] (q=cancel): " CHOICE
+        case "$CHOICE" in
+            1) NEW_UPOWER="true" ;;
+            2) NEW_UPOWER="false" ;;
+            q|Q) echo "Cancelled."; exit 0 ;;
+            *) echo "Invalid choice."; exit 1 ;;
+        esac
+        mkdir -p "$(dirname "$HW_CONF")"
+        if grep -q "^UPOWER_ENABLED=" "$HW_CONF" 2>/dev/null; then
+            sed -i "s/^UPOWER_ENABLED=.*/UPOWER_ENABLED=$NEW_UPOWER/" "$HW_CONF"
+        else
+            echo "UPOWER_ENABLED=$NEW_UPOWER" >> "$HW_CONF"
+        fi
+        echo ""
+        if [ "$NEW_UPOWER" = "false" ]; then
+            echo "UPower disabled. Battery monitoring will be stopped on next plasma start."
+        else
+            echo "UPower enabled. Battery monitoring will remain active."
         fi
         ;;
     q|Q)

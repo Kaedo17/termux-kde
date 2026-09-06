@@ -5,6 +5,8 @@
 
 HW_CONF="$HOME/.local/share/plasma-hw.conf"
 HW_MODE=$(grep "^HW_MODE=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "angle-gl")
+UPOWER_ENABLED=$(grep "^UPOWER_ENABLED=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+if [ -z "$UPOWER_ENABLED" ]; then UPOWER_ENABLED="true"; fi
 
 case "$HW_MODE" in
     software)
@@ -95,6 +97,7 @@ stop_plasma() {
         polkit-agent-helper-1 krunner ksplash kcminit 2>/dev/null
     killall -9 picom 2>/dev/null
     killall -9 virgl_test_server_android 2>/dev/null
+    killall -9 upowerd 2>/dev/null
     killall -9 anland 2>/dev/null
     killall -9 anland-compatible 2>/dev/null
     killall -9 kwin_wayland 2>/dev/null
@@ -206,6 +209,13 @@ if [ "$HW_DISPLAY" = "anland" ]; then
     setsid ~/bin/.plasma-daemon </dev/null >/dev/null 2>&1 &
 
     sleep 5
+
+    # Disable UPower if user chose to
+    if [ "$UPOWER_ENABLED" = "false" ]; then
+        killall -9 upowerd 2>/dev/null
+        killall -9 org_kde_powerdevil 2>/dev/null
+    fi
+
     echo "KDE Plasma started (mode: anland, backend: $QT_BACKEND). Check AnlandTermux app."
     exit 0
 fi
@@ -241,4 +251,11 @@ chmod +x ~/bin/.plasma-daemon
 setsid ~/bin/.plasma-daemon </dev/null >/dev/null 2>&1 &
 
 sleep 5
+
+# Disable UPower if user chose to (kills the noisy Termux:API spam)
+if [ "$UPOWER_ENABLED" = "false" ]; then
+    killall -9 upowerd 2>/dev/null
+    killall -9 org_kde_powerdevil 2>/dev/null
+fi
+
 echo "KDE Plasma started (mode: $HW_MODE, backend: $QT_BACKEND). Check Termux:X11 app."
