@@ -192,12 +192,14 @@ interactive_setup() {
                 echo "  1) Software        - safe, no GPU"
                 echo "  2) ANGLE OpenGL    - recommended for Mali"
                 echo "  3) ANGLE Vulkan    - experimental"
+                echo "  4) Anland Wayland  - native Wayland (needs AnlandTermux APK)"
                 echo ""
-                read -rp "Select [1-3] (default: 2): " INPUT_HW
+                read -rp "Select [1-4] (default: 2): " INPUT_HW
                 case "${INPUT_HW:-2}" in
                     1) HW_MODE="software" ;;
                     2) HW_MODE="angle-gl" ;;
                     3) HW_MODE="angle-vulkan" ;;
+                    4) HW_MODE="anland" ;;
                     *) HW_MODE="angle-gl" ;;
                 esac
                 ;;
@@ -310,6 +312,12 @@ case "$HW_MODE" in
         HW_SERVER=""
         HW_QT_BACKEND="vulkan"
         ;;
+    anland)
+        HW_ENV="ANLAND=1 ANLAND_SOCKET=\$TMPDIR/anland/display_daemon.sock MESA_LOADER_DRIVER_OVERRIDE=kgsl TURNIP_KMD=kgsl GALLIUM_DRIVER=freedreno FD_FORCE_KGSL=1 XWAYLAND_FORCE_KGSL_SURFACELESS=1 EGL_PLATFORM=surfaceless"
+        HW_SERVER=""
+        HW_QT_BACKEND="vulkan"
+        HW_DISPLAY="anland"
+        ;;
     *)
         HW_ENV="GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.3 MESA_GLES_VERSION_OVERRIDE=3.0 MESA_NO_ERROR=1 LIBGL_DRI3_DISABLE=1"
         HW_SERVER="virgl_test_server_android --angle-gl"
@@ -362,6 +370,9 @@ stop_plasma() {
         polkit-agent-helper-1 krunner ksplash kcminit 2>/dev/null
     killall -9 picom 2>/dev/null
     killall -9 virgl_test_server_android 2>/dev/null
+    killall -9 anland 2>/dev/null
+    killall -9 anland-compatible 2>/dev/null
+    killall -9 kwin_wayland 2>/dev/null
     local x11_pid
     x11_pid=$(ps -eo pid,args 2>/dev/null | grep "[t]ermux-x11 com.termux" | awk '{print $1}')
     if [ -n "$x11_pid" ]; then
@@ -390,11 +401,59 @@ pulseaudio --start \
   --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
   --exit-idle-time=-1
 
-if [ -n "$HW_SERVER" ]; then
-    setsid $HW_SERVER </dev/null >/dev/null 2>&1 &
+if [ -n "\$HW_SERVER" ]; then
+    setsid \$HW_SERVER </dev/null >/dev/null 2>&1 &
     sleep 1
 fi
 
+# Anland Wayland mode - different startup path
+if [ "\$HW_DISPLAY" = "anland" ]; then
+    # Create XDG_RUNTIME_DIR with proper permissions
+    mkdir -p "\$TMPDIR/run"
+    chown -R \$(id -un):\$(id -gn) "\$TMPDIR/run"
+    chmod -R 700 "\$TMPDIR/run"
+    mkdir -p "\$TMPDIR/.X11-unix"
+    chmod 1777 "\$TMPDIR/.X11-unix"
+    mkdir -p "\$TMPDIR/anland"
+
+    # Start Anland daemon
+    killall anland >/dev/null 2>&1
+    setsid anland </dev/null >/dev/null 2>&1 &
+    sleep 2
+
+    # Launch AnlandTermux app
+    am start --user 0 -n com.lfdevs.anlandtermux/.MainActivity &>/dev/null
+    sleep 3
+
+    TRIES=0
+    while [ ! -e "\$TMPDIR/anland/display_daemon.sock" ] && [ \$TRIES -lt 20 ]; do
+        sleep 1
+        TRIES=\$((TRIES + 1))
+    done
+
+    if [ ! -e "\$TMPDIR/anland/display_daemon.sock" ]; then
+        echo "ERROR: Anland display not ready. Is AnlandTermux app installed?"
+        exit 1
+    fi
+
+    echo "Anland display ready."
+
+    # Set SceneGraphBackend only on first run
+    KDEG="\$HOME/.config/kdeglobals"
+    if [ ! -f "\$KDEG" ] || ! grep -q "SceneGraphBackend" "\$KDEG" 2>/dev/null; then
+        mkdir -p "\$(dirname "\$KDEG")"
+        printf "\\n[QtQuickRendererSettings]\\nSceneGraphBackend=%s\\n" "\$QT_BACKEND" >> "\$KDEG"
+    fi
+
+    chmod +x ~/bin/.plasma-daemon
+    setsid ~/bin/.plasma-daemon </dev/null >/dev/null 2>&1 &
+
+    sleep 5
+    echo "KDE Plasma started (mode: anland, backend: \$QT_BACKEND). Check AnlandTermux app."
+    exit 0
+fi
+
+# X11 mode (existing logic)
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity &>/dev/null
 sleep 3
 
@@ -467,6 +526,16 @@ case "$HW_MODE" in
         export ZINK_DESCRIPTORS=lazy
         export MESA_VK_WSI_PRESENT_MODE=fifo
         ;;
+    anland)
+        export ANLAND=1
+        export ANLAND_SOCKET=\$TMPDIR/anland/display_daemon.sock
+        export MESA_LOADER_DRIVER_OVERRIDE=kgsl
+        export TURNIP_KMD=kgsl
+        export GALLIUM_DRIVER=freedreno
+        export FD_FORCE_KGSL=1
+        export XWAYLAND_FORCE_KGSL_SURFACELESS=1
+        export EGL_PLATFORM=surfaceless
+        ;;
     *)
         export GALLIUM_DRIVER=virpipe
         export MESA_GL_VERSION_OVERRIDE=4.3
@@ -477,16 +546,16 @@ case "$HW_MODE" in
 esac
 
 # Read QT_BACKEND from config (fallback to HW mode default)
-QT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
-case "$QT_BACKEND" in
+QT_BACKEND=\$(grep "^QT_BACKEND=" "\$HW_CONF" 2>/dev/null | cut -d= -f2)
+case "\$QT_BACKEND" in
     opengl)
         export EPOXY_USE_ANGLE=1
-        export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/gl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="\${PREFIX}/opt/angle-android/gl\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
         ;;
     vulkan)
-        if [ -z "$EPOXY_USE_ANGLE" ]; then
+        if [ -z "\$EPOXY_USE_ANGLE" ]; then
             export EPOXY_USE_ANGLE=1
-            export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/vulkan${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            export LD_LIBRARY_PATH="\${PREFIX}/opt/angle-android/vulkan\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
         fi
         ;;
     software)
@@ -495,17 +564,22 @@ case "$QT_BACKEND" in
 esac
 
 # LD_PRELOAD for username override
-if [ -f "$HOME/.local/lib/termux-user.so" ] && grep -q "^TERMUX_USER=" "$HW_CONF" 2>/dev/null; then
-    export LD_PRELOAD="$HOME/.local/lib/termux-user.so${LD_PRELOAD:+:$LD_PRELOAD}"
+if [ -f "\$HOME/.local/lib/termux-user.so" ] && grep -q "^TERMUX_USER=" "\$HW_CONF" 2>/dev/null; then
+    export LD_PRELOAD="\$HOME/.local/lib/termux-user.so\${LD_PRELOAD:+:\$LD_PRELOAD}"
 fi
 
 export DISPLAY=:0
 export PULSE_SERVER=127.0.0.1
 export vblank_mode=0
 export GTK_CSD=0
-export XDG_RUNTIME_DIR=${TMPDIR}
+export XDG_RUNTIME_DIR=\${TMPDIR}
 
-exec dbus-run-session startplasma-x11
+# Use Wayland session for Anland, X11 for everything else
+if [ "\$HW_MODE" = "anland" ]; then
+    exec dbus-run-session startplasma-wayland
+else
+    exec dbus-run-session startplasma-x11
+fi
 DAEMON_SCRIPT
     chmod +x ~/bin/.plasma-daemon
 
@@ -593,12 +667,14 @@ case "$SECTION" in
                 echo "  1) Software        - safe, no GPU"
                 echo "  2) ANGLE OpenGL    - recommended for Mali"
                 echo "  3) ANGLE Vulkan    - experimental"
+                echo "  4) Anland Wayland  - native Wayland (needs AnlandTermux APK)"
                 echo ""
-                read -rp "Select [1-3] (q=cancel): " CHOICE
+                read -rp "Select [1-4] (q=cancel): " CHOICE
                 case "$CHOICE" in
                     1) NEW_MODE="software" ;;
                     2) NEW_MODE="angle-gl" ;;
                     3) NEW_MODE="angle-vulkan" ;;
+                    4) NEW_MODE="anland" ;;
                     q|Q) echo "Cancelled."; exit 0 ;;
                     *) echo "Invalid choice."; exit 1 ;;
                 esac
@@ -608,6 +684,27 @@ case "$SECTION" in
         sed -i "s/^HW_MODE=.*/HW_MODE=$NEW_MODE/" "$HW_CONF" 2>/dev/null || echo "HW_MODE=$NEW_MODE" >> "$HW_CONF"
         echo ""
         echo "Hardware acceleration changed to: $NEW_MODE"
+        if [ "$NEW_MODE" = "anland" ]; then
+            echo ""
+            echo "=========================================="
+            echo " Anland Wayland - Setup Required"
+            echo "=========================================="
+            echo ""
+            echo "You need to install these packages first:"
+            echo ""
+            echo "  pkg install ~/anland_5.13.3_aarch64.deb"
+            echo "  pkg install ~/xwayland_24.1.12-2_aarch64.deb"
+            echo "  unzip kwin-anland_6.7.4_aarch64.deb"
+            echo ""
+            echo "Install the AnlandTermux APK from:"
+            echo "  https://github.com/lfdevs/anland-termux/releases/latest"
+            echo ""
+            echo "Use 'AnlandTermux-5.13.3-compatible.apk' for F-Droid Termux"
+            echo "Use 'AnlandTermux-5.13.3.apk' for GitHub Termux"
+            echo ""
+            echo "Then run 'plasma' to start the Wayland session."
+            echo ""
+        fi
         ;;
     2)
         echo "--- Qt Rendering Backend ---"

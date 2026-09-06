@@ -32,6 +32,12 @@ case "$HW_MODE" in
         HW_SERVER=""
         HW_QT_BACKEND="vulkan"
         ;;
+    anland)
+        HW_ENV="ANLAND=1 ANLAND_SOCKET=$TMPDIR/anland/display_daemon.sock MESA_LOADER_DRIVER_OVERRIDE=kgsl TURNIP_KMD=kgsl GALLIUM_DRIVER=freedreno FD_FORCE_KGSL=1 XWAYLAND_FORCE_KGSL_SURFACELESS=1 EGL_PLATFORM=surfaceless"
+        HW_SERVER=""
+        HW_QT_BACKEND="vulkan"
+        HW_DISPLAY="anland"
+        ;;
     *)
         HW_ENV="GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.3 MESA_GLES_VERSION_OVERRIDE=3.0 MESA_NO_ERROR=1 LIBGL_DRI3_DISABLE=1"
         HW_SERVER="virgl_test_server_android --angle-gl"
@@ -84,6 +90,9 @@ stop_plasma() {
         polkit-agent-helper-1 krunner ksplash kcminit 2>/dev/null
     killall -9 picom 2>/dev/null
     killall -9 virgl_test_server_android 2>/dev/null
+    killall -9 anland 2>/dev/null
+    killall -9 anland-compatible 2>/dev/null
+    killall -9 kwin_wayland 2>/dev/null
     local x11_pid
     x11_pid=$(ps -eo pid,args 2>/dev/null | grep "[t]ermux-x11 com.termux" | awk '{print $1}')
     if [ -n "$x11_pid" ]; then
@@ -149,6 +158,54 @@ if [ -n "$HW_SERVER" ]; then
     sleep 1
 fi
 
+# Anland Wayland mode - different startup path
+if [ "$HW_DISPLAY" = "anland" ]; then
+    # Create XDG_RUNTIME_DIR with proper permissions
+    mkdir -p "$TMPDIR/run"
+    chown -R $(id -un):$(id -gn) "$TMPDIR/run"
+    chmod -R 700 "$TMPDIR/run"
+    mkdir -p "$TMPDIR/.X11-unix"
+    chmod 1777 "$TMPDIR/.X11-unix"
+    mkdir -p "$TMPDIR/anland"
+
+    # Start Anland daemon
+    killall anland >/dev/null 2>&1
+    setsid anland </dev/null >/dev/null 2>&1 &
+    sleep 2
+
+    # Launch AnlandTermux app
+    am start --user 0 -n com.lfdevs.anlandtermux/.MainActivity &>/dev/null
+    sleep 3
+
+    TRIES=0
+    while [ ! -e "$TMPDIR/anland/display_daemon.sock" ] && [ $TRIES -lt 20 ]; do
+        sleep 1
+        TRIES=$((TRIES + 1))
+    done
+
+    if [ ! -e "$TMPDIR/anland/display_daemon.sock" ]; then
+        echo "ERROR: Anland display not ready. Is AnlandTermux app installed?"
+        exit 1
+    fi
+
+    echo "Anland display ready."
+
+    # Set SceneGraphBackend only on first run
+    KDEG="$HOME/.config/kdeglobals"
+    if [ ! -f "$KDEG" ] || ! grep -q "SceneGraphBackend" "$KDEG" 2>/dev/null; then
+        mkdir -p "$(dirname "$KDEG")"
+        printf "\n[QtQuickRendererSettings]\nSceneGraphBackend=%s\n" "$QT_BACKEND" >> "$KDEG"
+    fi
+
+    chmod +x ~/bin/.plasma-daemon
+    setsid ~/bin/.plasma-daemon </dev/null >/dev/null 2>&1 &
+
+    sleep 5
+    echo "KDE Plasma started (mode: anland, backend: $QT_BACKEND). Check AnlandTermux app."
+    exit 0
+fi
+
+# X11 mode (existing logic)
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity &>/dev/null
 sleep 3
 
