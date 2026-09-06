@@ -50,8 +50,9 @@ run_step() {
     local step=$1
     local desc=$2
     local func="step_${step}"
+    local force="${3:-}"
 
-    if step_done "$step"; then
+    if [ "$force" != "force" ] && step_done "$step"; then
         info "Step $step/$total_steps: $desc (already done, skipping)"
         return 0
     fi
@@ -1160,7 +1161,10 @@ step_desc() {
 }
 
 for i in $(seq 1 $total_steps); do
-    run_step "$i" "$(step_desc $i)" || exit 1
+    case $i in
+        7|8) run_step "$i" "$(step_desc $i)" force || exit 1 ;;
+        *)   run_step "$i" "$(step_desc $i)" || exit 1 ;;
+    esac
 done
 
 # ---- Done ----
