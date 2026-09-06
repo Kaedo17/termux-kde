@@ -446,7 +446,7 @@ pulseaudio --start --exit-idle-time=-1
 
 # Detect actual PulseAudio Unix socket (TCP often fails on Termux)
 sleep 1
-PULSE_SOCK=$(ls /data/data/com.termux/files/usr/tmp/pulse-*/native 2>/dev/null | head -1)
+PULSE_SOCK=$(ls /data/data/com.termux/files/usr/tmp/pulse*/native 2>/dev/null | head -1)
 if [ -n "$PULSE_SOCK" ]; then
     export PULSE_SERVER="unix:$PULSE_SOCK"
 else
@@ -645,7 +645,7 @@ export GTK_CSD=0
 export XDG_RUNTIME_DIR=${TMPDIR}
 
 # Detect actual PulseAudio Unix socket
-PULSE_SOCK=$(ls /data/data/com.termux/files/usr/tmp/pulse-*/native 2>/dev/null | head -1)
+PULSE_SOCK=$(ls /data/data/com.termux/files/usr/tmp/pulse*/native 2>/dev/null | head -1)
 if [ -n "$PULSE_SOCK" ]; then
     export PULSE_SERVER="unix:$PULSE_SOCK"
 else
