@@ -353,12 +353,12 @@ case "$QT_BACKEND" in
 esac
 
 # LD_PRELOAD for username override
-if [ -f "\$HOME/.local/lib/termux-user.so" ] && grep -q "^TERMUX_USER=" "\$HW_CONF" 2>/dev/null; then
-    export LD_PRELOAD="\$HOME/.local/lib/termux-user.so\${LD_PRELOAD:+:\$LD_PRELOAD}"
-    TERMUX_USER_VAL=\$(grep "^TERMUX_USER=" "\$HW_CONF" 2>/dev/null | cut -d= -f2)
-    if [ -n "\$TERMUX_USER_VAL" ]; then
-        export USER="\$TERMUX_USER_VAL"
-        export LOGNAME="\$TERMUX_USER_VAL"
+if [ -f "$HOME/.local/lib/termux-user.so" ] && grep -q "^TERMUX_USER=" "$HW_CONF" 2>/dev/null; then
+    export LD_PRELOAD="$HOME/.local/lib/termux-user.so${LD_PRELOAD:+:$LD_PRELOAD}"
+    TERMUX_USER_VAL=$(grep "^TERMUX_USER=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+    if [ -n "$TERMUX_USER_VAL" ]; then
+        export USER="$TERMUX_USER_VAL"
+        export LOGNAME="$TERMUX_USER_VAL"
     fi
 fi
 
@@ -414,27 +414,27 @@ pulseaudio --start --exit-idle-time=-1
 
 # Detect actual PulseAudio Unix socket (TCP often fails on Termux)
 sleep 1
-PULSE_SOCK=\$(ls /data/data/com.termux/files/usr/tmp/pulse-*/native 2>/dev/null | head -1)
-if [ -n "\$PULSE_SOCK" ]; then
-    export PULSE_SERVER="unix:\$PULSE_SOCK"
+PULSE_SOCK=$(ls /data/data/com.termux/files/usr/tmp/pulse-*/native 2>/dev/null | head -1)
+if [ -n "$PULSE_SOCK" ]; then
+    export PULSE_SERVER="unix:$PULSE_SOCK"
 else
     export PULSE_SERVER=127.0.0.1
 fi
 
-if [ -n "\$HW_SERVER" ]; then
-    setsid \$HW_SERVER </dev/null >/dev/null 2>&1 &
+if [ -n "$HW_SERVER" ]; then
+    setsid $HW_SERVER </dev/null >/dev/null 2>&1 &
     sleep 1
 fi
 
 # Anland Wayland mode - different startup path
-if [ "\$HW_DISPLAY" = "anland" ]; then
+if [ "$HW_DISPLAY" = "anland" ]; then
     # Create XDG_RUNTIME_DIR with proper permissions
-    mkdir -p "\$TMPDIR/run"
-    chown -R \$(id -un):\$(id -gn) "\$TMPDIR/run"
-    chmod -R 700 "\$TMPDIR/run"
-    mkdir -p "\$TMPDIR/.X11-unix"
-    chmod 1777 "\$TMPDIR/.X11-unix"
-    mkdir -p "\$TMPDIR/anland"
+    mkdir -p "$TMPDIR/run"
+    chown -R $(id -un):$(id -gn) "$TMPDIR/run"
+    chmod -R 700 "$TMPDIR/run"
+    mkdir -p "$TMPDIR/.X11-unix"
+    chmod 1777 "$TMPDIR/.X11-unix"
+    mkdir -p "$TMPDIR/anland"
 
     # Start Anland daemon
     killall anland >/dev/null 2>&1
@@ -446,12 +446,12 @@ if [ "\$HW_DISPLAY" = "anland" ]; then
     sleep 3
 
     TRIES=0
-    while [ ! -e "\$TMPDIR/anland/display_daemon.sock" ] && [ \$TRIES -lt 20 ]; do
+    while [ ! -e "$TMPDIR/anland/display_daemon.sock" ] && [ $TRIES -lt 20 ]; do
         sleep 1
-        TRIES=\$((TRIES + 1))
+        TRIES=$((TRIES + 1))
     done
 
-    if [ ! -e "\$TMPDIR/anland/display_daemon.sock" ]; then
+    if [ ! -e "$TMPDIR/anland/display_daemon.sock" ]; then
         echo "ERROR: Anland display not ready. Is AnlandTermux app installed?"
         exit 1
     fi
@@ -459,10 +459,10 @@ if [ "\$HW_DISPLAY" = "anland" ]; then
     echo "Anland display ready."
 
     # Set SceneGraphBackend only on first run
-    KDEG="\$HOME/.config/kdeglobals"
-    if [ ! -f "\$KDEG" ] || ! grep -q "SceneGraphBackend" "\$KDEG" 2>/dev/null; then
-        mkdir -p "\$(dirname "\$KDEG")"
-        printf "\\n[QtQuickRendererSettings]\\nSceneGraphBackend=%s\\n" "\$QT_BACKEND" >> "\$KDEG"
+    KDEG="$HOME/.config/kdeglobals"
+    if [ ! -f "$KDEG" ] || ! grep -q "SceneGraphBackend" "$KDEG" 2>/dev/null; then
+        mkdir -p "$(dirname "$KDEG")"
+        printf "\\n[QtQuickRendererSettings]\\nSceneGraphBackend=%s\\n" "$QT_BACKEND" >> "$KDEG"
     fi
 
     chmod +x ~/bin/.plasma-daemon
@@ -476,7 +476,7 @@ if [ "\$HW_DISPLAY" = "anland" ]; then
         killall -9 org_kde_powerdevil 2>/dev/null
     fi
 
-    echo "KDE Plasma started (mode: anland, backend: \$QT_BACKEND). Check AnlandTermux app."
+    echo "KDE Plasma started (mode: anland, backend: $QT_BACKEND). Check AnlandTermux app."
     exit 0
 fi
 
@@ -562,7 +562,7 @@ case "$HW_MODE" in
         ;;
     anland)
         export ANLAND=1
-        export ANLAND_SOCKET=\$TMPDIR/anland/display_daemon.sock
+        export ANLAND_SOCKET=$TMPDIR/anland/display_daemon.sock
         export MESA_LOADER_DRIVER_OVERRIDE=kgsl
         export TURNIP_KMD=kgsl
         export GALLIUM_DRIVER=freedreno
@@ -580,16 +580,16 @@ case "$HW_MODE" in
 esac
 
 # Read QT_BACKEND from config (fallback to HW mode default)
-QT_BACKEND=\$(grep "^QT_BACKEND=" "\$HW_CONF" 2>/dev/null | cut -d= -f2)
-case "\$QT_BACKEND" in
+QT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+case "$QT_BACKEND" in
     opengl)
         export EPOXY_USE_ANGLE=1
-        export LD_LIBRARY_PATH="\${PREFIX}/opt/angle-android/gl\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/gl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         ;;
     vulkan)
-        if [ -z "\$EPOXY_USE_ANGLE" ]; then
+        if [ -z "$EPOXY_USE_ANGLE" ]; then
             export EPOXY_USE_ANGLE=1
-            export LD_LIBRARY_PATH="\${PREFIX}/opt/angle-android/vulkan\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+            export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/vulkan${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         fi
         ;;
     software)
@@ -598,30 +598,30 @@ case "\$QT_BACKEND" in
 esac
 
 # LD_PRELOAD for username override
-if [ -f "\$HOME/.local/lib/termux-user.so" ] && grep -q "^TERMUX_USER=" "\$HW_CONF" 2>/dev/null; then
-    export LD_PRELOAD="\$HOME/.local/lib/termux-user.so\${LD_PRELOAD:+:\$LD_PRELOAD}"
-    TERMUX_USER_VAL=\$(grep "^TERMUX_USER=" "\$HW_CONF" 2>/dev/null | cut -d= -f2)
-    if [ -n "\$TERMUX_USER_VAL" ]; then
-        export USER="\$TERMUX_USER_VAL"
-        export LOGNAME="\$TERMUX_USER_VAL"
+if [ -f "$HOME/.local/lib/termux-user.so" ] && grep -q "^TERMUX_USER=" "$HW_CONF" 2>/dev/null; then
+    export LD_PRELOAD="$HOME/.local/lib/termux-user.so${LD_PRELOAD:+:$LD_PRELOAD}"
+    TERMUX_USER_VAL=$(grep "^TERMUX_USER=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+    if [ -n "$TERMUX_USER_VAL" ]; then
+        export USER="$TERMUX_USER_VAL"
+        export LOGNAME="$TERMUX_USER_VAL"
     fi
 fi
 
 export DISPLAY=:0
 export vblank_mode=0
 export GTK_CSD=0
-export XDG_RUNTIME_DIR=\${TMPDIR}
+export XDG_RUNTIME_DIR=${TMPDIR}
 
 # Detect actual PulseAudio Unix socket
-PULSE_SOCK=\$(ls /data/data/com.termux/files/usr/tmp/pulse-*/native 2>/dev/null | head -1)
-if [ -n "\$PULSE_SOCK" ]; then
-    export PULSE_SERVER="unix:\$PULSE_SOCK"
+PULSE_SOCK=$(ls /data/data/com.termux/files/usr/tmp/pulse-*/native 2>/dev/null | head -1)
+if [ -n "$PULSE_SOCK" ]; then
+    export PULSE_SERVER="unix:$PULSE_SOCK"
 else
     export PULSE_SERVER=127.0.0.1
 fi
 
 # Use Wayland session for Anland, X11 for everything else
-if [ "\$HW_MODE" = "anland" ]; then
+if [ "$HW_MODE" = "anland" ]; then
     exec dbus-run-session startplasma-wayland
 else
     exec dbus-run-session startplasma-x11
