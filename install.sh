@@ -276,6 +276,7 @@ step_6() {
 
 step_7() {
     mkdir -p ~/bin
+    HW_CONF="$HOME/.local/share/plasma-hw.conf"
 
     # --- ~/bin/plasma ---
     cat > ~/bin/plasma << 'PLASMA_SCRIPT'
