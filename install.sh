@@ -341,7 +341,7 @@ case "$QT_BACKEND" in
 esac
 
 # LD_PRELOAD for username override
-if [ -f "$HOME/.local/lib/termux-user.so" ]; then
+if [ -f "$HOME/.local/lib/termux-user.so" ] && grep -q "^TERMUX_USER=" "$HW_CONF" 2>/dev/null; then
     export LD_PRELOAD="$HOME/.local/lib/termux-user.so${LD_PRELOAD:+:$LD_PRELOAD}"
 fi
 
@@ -495,7 +495,7 @@ case "$QT_BACKEND" in
 esac
 
 # LD_PRELOAD for username override
-if [ -f "$HOME/.local/lib/termux-user.so" ]; then
+if [ -f "$HOME/.local/lib/termux-user.so" ] && grep -q "^TERMUX_USER=" "$HW_CONF" 2>/dev/null; then
     export LD_PRELOAD="$HOME/.local/lib/termux-user.so${LD_PRELOAD:+:$LD_PRELOAD}"
 fi
 
@@ -658,7 +658,11 @@ case "$SECTION" in
         read -rp "Enter new username (Enter to keep current): " NEW_NAME
         if [ -n "$NEW_NAME" ] && [ "$NEW_NAME" != "${CURRENT_TERMUX_USER:-$(id -un)}" ]; then
             mkdir -p "$(dirname "$HW_CONF")"
-            sed -i "s/^TERMUX_USER=.*/TERMUX_USER=$NEW_NAME/" "$HW_CONF" 2>/dev/null || echo "TERMUX_USER=$NEW_NAME" >> "$HW_CONF"
+            if grep -q "^TERMUX_USER=" "$HW_CONF" 2>/dev/null; then
+                sed -i "s/^TERMUX_USER=.*/TERMUX_USER=$NEW_NAME/" "$HW_CONF"
+            else
+                echo "TERMUX_USER=$NEW_NAME" >> "$HW_CONF"
+            fi
             if grep -q '^# ---- Termux User ----' ~/.bashrc 2>/dev/null; then
                 sed -i '/^# ---- Termux User ----$/,/^export PS1=.*$/d' ~/.bashrc
             fi
