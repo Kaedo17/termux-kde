@@ -957,12 +957,17 @@ FIREFOX_DESKTOP
 Name=Code OSS
 Comment=Visual Studio Code - OSS
 Exec=code-oss
-Icon=code-oss
+Icon=com.visualstudio.code.oss
 Type=Application
 Categories=Development;IDE;
 Terminal=false
 StartupNotify=true
 CODE_DESKTOP
+    # Copy code-oss icon to hicolor theme (package only installs to pixmaps)
+    mkdir -p /data/data/com.termux/files/usr/share/icons/hicolor/48x48/apps
+    cp /data/data/com.termux/files/usr/share/pixmaps/com.visualstudio.code.oss.png \
+       /data/data/com.termux/files/usr/share/icons/hicolor/48x48/apps/ 2>/dev/null
+    gtk-update-icon-cache -f /data/data/com.termux/files/usr/share/icons/hicolor/ 2>/dev/null
 }
 
 step_14() {
