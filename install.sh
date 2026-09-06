@@ -974,11 +974,15 @@ step_14() {
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 
 #undef getpwuid
+#undef getpwuid_r
 
 static struct passwd orig_pwd;
 static char username[256];
+static char home_dir[512];
+static char shell_path[64];
 static int initialized = 0;
 
 static void init() {
@@ -1005,6 +1009,11 @@ static void init() {
         }
     }
     fclose(f);
+
+    if (username[0]) {
+        snprintf(home_dir, sizeof(home_dir), "/data/data/com.termux/files/home");
+        strncpy(shell_path, "/data/data/com.termux/files/usr/bin/bash", sizeof(shell_path) - 1);
+    }
 }
 
 struct passwd *getpwuid(uid_t uid) {
@@ -1017,9 +1026,26 @@ struct passwd *getpwuid(uid_t uid) {
     if (pw && username[0]) {
         orig_pwd = *pw;
         orig_pwd.pw_name = username;
+        orig_pwd.pw_dir = home_dir;
+        orig_pwd.pw_shell = shell_path;
         return &orig_pwd;
     }
     return pw;
+}
+
+int getpwuid_r(uid_t uid, struct passwd *pwd, char *buf, size_t buflen, struct passwd **result) {
+    init();
+
+    typedef int (*getpwuid_r_fn)(uid_t, struct passwd *, char *, size_t, struct passwd **);
+    getpwuid_r_fn orig = (getpwuid_r_fn)dlsym(RTLD_NEXT, "getpwuid_r");
+    int ret = orig(uid, pwd, buf, buflen, result);
+
+    if (ret == 0 && *result && username[0]) {
+        (*result)->pw_name = username;
+        (*result)->pw_dir = home_dir;
+        (*result)->pw_shell = shell_path;
+    }
+    return ret;
 }
 TERMUX_USER_C
     DEBIAN_FRONTEND=noninteractive pkg install -y clang
