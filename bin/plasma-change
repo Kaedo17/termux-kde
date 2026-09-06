@@ -1,0 +1,180 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+# plasma-change - Change HW acceleration mode, Qt backend, or proot username
+
+HW_CONF="$HOME/.local/share/plasma-hw.conf"
+
+detect_gpu() {
+    if [ -d /sys/class/kgsl/kgsl-3d0 ] 2>/dev/null; then
+        echo "adreno"
+        return
+    fi
+    local vulkan_hw
+    vulkan_hw=$(getprop ro.hardware.vulkan 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    case "$vulkan_hw" in
+        mali)    echo "mali" ;;
+        xclipse) echo "xclipse" ;;
+        *)       echo "unknown" ;;
+    esac
+}
+
+gpu_label() {
+    case "$1" in
+        adreno)  echo "Adreno (Snapdragon)" ;;
+        mali)    echo "Mali (MediaTek)" ;;
+        xclipse) echo "Xclipse (Samsung Exynos)" ;;
+        *)       echo "Unknown GPU" ;;
+    esac
+}
+
+# Read current config
+CURRENT_MODE="angle-gl"
+CURRENT_BACKEND="vulkan"
+CURRENT_USER="kemji"
+if [ -f "$HW_CONF" ]; then
+    CURRENT_MODE=$(grep "^HW_MODE=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "angle-gl")
+    CURRENT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "vulkan")
+    CURRENT_USER=$(grep "^PROOT_USER=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "kemji")
+fi
+
+GPU=$(detect_gpu)
+LABEL=$(gpu_label "$GPU")
+
+echo ""
+echo "=========================================="
+echo "   Plasma Settings"
+echo "   GPU: $LABEL"
+echo "=========================================="
+echo ""
+echo "  1) Hardware Acceleration  [$CURRENT_MODE]"
+echo "  2) Qt Rendering Backend   [$CURRENT_BACKEND]"
+echo "  3) Proot Username         [$CURRENT_USER]"
+echo "  4) Termux Prompt          [$(grep '^export PS1=' ~/.bashrc 2>/dev/null | sed "s/.*PS1=//;s/'//g" || echo '\\u@\\h:\\w\\$')]"
+echo ""
+read -rp "Select [1-4] (q=cancel): " SECTION
+echo ""
+
+case "$SECTION" in
+    1)
+        echo "--- Hardware Acceleration ---"
+        echo ""
+        case "$GPU" in
+            adreno)
+                echo "  1) Software        - safe, no GPU"
+                echo "  2) ANGLE OpenGL    - good compatibility"
+                echo "  3) Turnip Vulkan   - native Adreno Vulkan"
+                echo "  4) Turnip + Zink   - best performance (Adreno)"
+                echo ""
+                read -rp "Select [1-4] (q=cancel): " CHOICE
+                case "$CHOICE" in
+                    1) NEW_MODE="software" ;;
+                    2) NEW_MODE="angle-gl" ;;
+                    3) NEW_MODE="turnip" ;;
+                    4) NEW_MODE="turnip-zink" ;;
+                    q|Q) echo "Cancelled."; exit 0 ;;
+                    *) echo "Invalid choice."; exit 1 ;;
+                esac
+                ;;
+            mali|*)
+                echo "  1) Software        - safe, no GPU"
+                echo "  2) ANGLE OpenGL    - recommended for Mali"
+                echo "  3) ANGLE Vulkan    - experimental"
+                echo ""
+                read -rp "Select [1-3] (q=cancel): " CHOICE
+                case "$CHOICE" in
+                    1) NEW_MODE="software" ;;
+                    2) NEW_MODE="angle-gl" ;;
+                    3) NEW_MODE="angle-vulkan" ;;
+                    q|Q) echo "Cancelled."; exit 0 ;;
+                    *) echo "Invalid choice."; exit 1 ;;
+                esac
+                ;;
+        esac
+        mkdir -p "$(dirname "$HW_CONF")"
+        sed -i "s/^HW_MODE=.*/HW_MODE=$NEW_MODE/" "$HW_CONF" 2>/dev/null || echo "HW_MODE=$NEW_MODE" >> "$HW_CONF"
+        echo ""
+        echo "Hardware acceleration changed to: $NEW_MODE"
+        ;;
+    2)
+        echo "--- Qt Rendering Backend ---"
+        echo ""
+        echo "  1) vulkan   - GPU accelerated (recommended)"
+        echo "  2) opengl   - OpenGL rendering"
+        echo "  3) software - CPU only (safe fallback)"
+        echo ""
+        read -rp "Select [1-3] (q=cancel): " CHOICE
+        case "$CHOICE" in
+            1) NEW_BACKEND="vulkan" ;;
+            2) NEW_BACKEND="opengl" ;;
+            3) NEW_BACKEND="software" ;;
+            q|Q) echo "Cancelled."; exit 0 ;;
+            *) echo "Invalid choice."; exit 1 ;;
+        esac
+        mkdir -p "$(dirname "$HW_CONF")"
+        sed -i "s/^QT_BACKEND=.*/QT_BACKEND=$NEW_BACKEND/" "$HW_CONF" 2>/dev/null || echo "QT_BACKEND=$NEW_BACKEND" >> "$HW_CONF"
+        # Also update kdeglobals immediately so user can see the change
+        KDEG="$HOME/.config/kdeglobals"
+        if [ -f "$KDEG" ] && grep -q "SceneGraphBackend" "$KDEG" 2>/dev/null; then
+            sed -i "s/SceneGraphBackend=.*/SceneGraphBackend=$NEW_BACKEND/" "$KDEG"
+        fi
+        echo ""
+        echo "Qt backend changed to: $NEW_BACKEND"
+        ;;
+    3)
+        echo "--- Proot Username ---"
+        echo ""
+        echo "Current username: $CURRENT_USER"
+        read -rp "Enter new username (Enter to keep current): " NEW_USER
+        if [ -n "$NEW_USER" ] && [ "$NEW_USER" != "$CURRENT_USER" ]; then
+            mkdir -p "$(dirname "$HW_CONF")"
+            sed -i "s/^PROOT_USER=.*/PROOT_USER=$NEW_USER/" "$HW_CONF" 2>/dev/null || echo "PROOT_USER=$NEW_USER" >> "$HW_CONF"
+            echo ""
+            echo "Username changed to: $NEW_USER"
+            echo "NOTE: Run ./install.sh to create this user in Ubuntu."
+        else
+            echo "Username unchanged."
+        fi
+        ;;
+    4)
+        echo "--- Termux Prompt ---"
+        echo ""
+        echo "Changes the username shown in your terminal prompt."
+        echo "Current PS1: $(grep '^export PS1=' ~/.bashrc 2>/dev/null | sed "s/.*PS1=//;s/'//g" || echo '\\u@\\h:\\w\\$')"
+        echo ""
+        read -rp "Enter new prompt name (Enter to keep current): " NEW_NAME
+        if [ -n "$NEW_NAME" ]; then
+            if grep -q '^# ---- Termux PS1 ----' ~/.bashrc 2>/dev/null; then
+                sed -i '/^# ---- Termux PS1 ----$/,/^export PS1=.*$/d' ~/.bashrc
+            fi
+            cat >> ~/.bashrc << PS1_ADDON
+
+# ---- Termux PS1 ----
+export PS1="$NEW_NAME@\\h:\\w\\$ "
+PS1_ADDON
+            echo ""
+            echo "Prompt changed to: $NEW_NAME@\h:\w\$ "
+            echo "Open a new terminal to see the change."
+        else
+            echo "Prompt unchanged."
+        fi
+        ;;
+    q|Q)
+        echo "Cancelled."
+        exit 0
+        ;;
+    *)
+        echo "Invalid choice."
+        exit 1
+        ;;
+esac
+
+echo ""
+read -rp "Restart plasma now? [Y/n]: " RESTART
+if [[ ! "$RESTART" =~ ^[nN] ]]; then
+    echo "Restarting plasma..."
+    ~/bin/plasma stop
+    sleep 2
+    ~/bin/plasma
+else
+    echo "Done. Run 'plasma' to apply changes."
+fi

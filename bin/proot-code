@@ -1,0 +1,13 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+# proot-code: Launch VS Code from proot Ubuntu on Termux X11
+HW_CONF="$HOME/.local/share/plasma-hw.conf"
+PROOT_USER=$(grep "^PROOT_USER=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "kemji")
+
+proot-distro login ubuntu -u "$PROOT_USER" \
+  --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix \
+  -- env DISPLAY=:0 \
+  /usr/share/code/code \
+  --no-sandbox \
+  --user-data-dir="/home/$PROOT_USER/.vscode-data" \
+  "$@"

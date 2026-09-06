@@ -1,0 +1,70 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+HW_CONF="$HOME/.local/share/plasma-hw.conf"
+HW_MODE=$(grep "^HW_MODE=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "angle-gl")
+
+case "$HW_MODE" in
+    software)
+        export LIBGL_ALWAYS_SOFTWARE=1
+        export GALLIUM_DRIVER=llvmpipe
+        export MESA_GL_VERSION_OVERRIDE=4.3
+        ;;
+    angle-gl)
+        export GALLIUM_DRIVER=virpipe
+        export MESA_GL_VERSION_OVERRIDE=4.3
+        export MESA_GLES_VERSION_OVERRIDE=3.0
+        export MESA_NO_ERROR=1
+        export LIBGL_DRI3_DISABLE=1
+        ;;
+    angle-vulkan)
+        export GALLIUM_DRIVER=virpipe
+        export MESA_GL_VERSION_OVERRIDE=4.1COMPAT
+        export MESA_GLES_VERSION_OVERRIDE=3.2
+        export MESA_GLSL_VERSION_OVERRIDE=410
+        export MESA_NO_ERROR=1
+        export LIBGL_DRI3_DISABLE=1
+        export EPOXY_USE_ANGLE=1
+        export LD_LIBRARY_PATH=$PREFIX/opt/angle-android/vulkan
+        ;;
+    turnip)
+        export MESA_VK_WSI_PRESENT_MODE=fifo
+        ;;
+    turnip-zink)
+        export MESA_GL_VERSION_OVERRIDE=4.3
+        export ZINK_DESCRIPTORS=lazy
+        export MESA_VK_WSI_PRESENT_MODE=fifo
+        ;;
+    *)
+        export GALLIUM_DRIVER=virpipe
+        export MESA_GL_VERSION_OVERRIDE=4.3
+        export MESA_GLES_VERSION_OVERRIDE=3.0
+        export MESA_NO_ERROR=1
+        export LIBGL_DRI3_DISABLE=1
+        ;;
+esac
+
+# Read QT_BACKEND from config (fallback to HW mode default)
+QT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+case "$QT_BACKEND" in
+    opengl)
+        export EPOXY_USE_ANGLE=1
+        export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/gl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        ;;
+    vulkan)
+        if [ -z "$EPOXY_USE_ANGLE" ]; then
+            export EPOXY_USE_ANGLE=1
+            export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/vulkan${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        fi
+        ;;
+    software)
+        export QT_QUICK_BACKEND=software
+        ;;
+esac
+
+export DISPLAY=:0
+export PULSE_SERVER=127.0.0.1
+export vblank_mode=0
+export GTK_CSD=0
+export XDG_RUNTIME_DIR=${TMPDIR}
+
+exec dbus-run-session startplasma-x11

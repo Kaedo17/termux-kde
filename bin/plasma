@@ -1,0 +1,145 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+# plasma - Start/Stop KDE Plasma with GPU acceleration on Termux X11
+# Usage: plasma [start|stop|change]
+
+HW_CONF="$HOME/.local/share/plasma-hw.conf"
+HW_MODE=$(grep "^HW_MODE=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "angle-gl")
+
+case "$HW_MODE" in
+    software)
+        HW_ENV="LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe MESA_GL_VERSION_OVERRIDE=4.3"
+        HW_SERVER="virgl_test_server_android"
+        HW_QT_BACKEND="software"
+        ;;
+    angle-gl)
+        HW_ENV="GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.3 MESA_GLES_VERSION_OVERRIDE=3.0 MESA_NO_ERROR=1 LIBGL_DRI3_DISABLE=1"
+        HW_SERVER="virgl_test_server_android --angle-gl"
+        HW_QT_BACKEND="vulkan"
+        ;;
+    angle-vulkan)
+        HW_ENV="GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.1COMPAT MESA_GLES_VERSION_OVERRIDE=3.2 MESA_GLSL_VERSION_OVERRIDE=410 MESA_NO_ERROR=1 LIBGL_DRI3_DISABLE=1 EPOXY_USE_ANGLE=1 LD_LIBRARY_PATH=$PREFIX/opt/angle-android/vulkan"
+        HW_SERVER="virgl_test_server_android --angle-vulkan"
+        HW_QT_BACKEND="vulkan"
+        ;;
+    turnip)
+        HW_ENV="MESA_VK_WSI_PRESENT_MODE=fifo"
+        HW_SERVER=""
+        HW_QT_BACKEND="vulkan"
+        ;;
+    turnip-zink)
+        HW_ENV="MESA_GL_VERSION_OVERRIDE=4.3 ZINK_DESCRIPTORS=lazy MESA_VK_WSI_PRESENT_MODE=fifo"
+        HW_SERVER=""
+        HW_QT_BACKEND="vulkan"
+        ;;
+    *)
+        HW_ENV="GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.3 MESA_GLES_VERSION_OVERRIDE=3.0 MESA_NO_ERROR=1 LIBGL_DRI3_DISABLE=1"
+        HW_SERVER="virgl_test_server_android --angle-gl"
+        HW_QT_BACKEND="vulkan"
+        ;;
+esac
+
+# Read QT_BACKEND from config (fallback to HW mode default)
+QT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+if [ -z "$QT_BACKEND" ]; then
+    QT_BACKEND="$HW_QT_BACKEND"
+fi
+
+# Apply QT_BACKEND-specific environment overrides
+case "$QT_BACKEND" in
+    opengl)
+        export EPOXY_USE_ANGLE=1
+        export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/gl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        ;;
+    vulkan)
+        if [ -z "$EPOXY_USE_ANGLE" ]; then
+            export EPOXY_USE_ANGLE=1
+            export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/vulkan${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        fi
+        ;;
+    software)
+        export QT_QUICK_BACKEND=software
+        ;;
+esac
+
+export $HW_ENV
+export vblank_mode=0
+export GTK_CSD=0
+export XDG_RUNTIME_DIR=${TMPDIR}
+export DISPLAY=:0
+export PULSE_SERVER=127.0.0.1
+
+stop_plasma() {
+    echo "Shutting down KDE Plasma..."
+    timeout 3 plasma-shutdown 2>/dev/null
+    sleep 1
+    killall -9 startplasma-x11 plasmashell plasma_session kwin_x11 kded6 \
+        ksmserver kglobalaccel powerdevil kaccess kscreen xembedsniproxy \
+        kactivitymanagerd kwalletd6 baloorunner gmenudbusmenuproxy \
+        polkit-agent-helper-1 krunner ksplash kcminit 2>/dev/null
+    killall -9 picom 2>/dev/null
+    killall -9 virgl_test_server_android 2>/dev/null
+    local x11_pid
+    x11_pid=$(ps -eo pid,args 2>/dev/null | grep "[t]ermux-x11 com.termux" | awk '{print $1}')
+    if [ -n "$x11_pid" ]; then
+        kill -9 $x11_pid 2>/dev/null
+    fi
+    pulseaudio --kill 2>/dev/null
+    sleep 1
+    echo "Done."
+}
+
+if [ "$1" = "stop" ]; then
+    stop_plasma
+    exit 0
+fi
+
+if [ "$1" = "change" ]; then
+    exec ~/bin/plasma-change
+fi
+
+stop_plasma
+sleep 1
+
+pulseaudio --kill 2>/dev/null
+sleep 1
+pulseaudio --start \
+  --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
+  --exit-idle-time=-1
+
+if [ -n "$HW_SERVER" ]; then
+    setsid $HW_SERVER </dev/null >/dev/null 2>&1 &
+    sleep 1
+fi
+
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity &>/dev/null
+sleep 3
+
+setsid termux-x11 :0 </dev/null >/dev/null 2>&1 &
+sleep 5
+
+TRIES=0
+while [ ! -e "${TMPDIR}/.X11-unix/X0" ] && [ $TRIES -lt 20 ]; do
+    sleep 1
+    TRIES=$((TRIES + 1))
+done
+
+if [ ! -e "${TMPDIR}/.X11-unix/X0" ]; then
+    echo "ERROR: X11 display not ready. Is Termux:X11 app installed?"
+    exit 1
+fi
+
+echo "X11 display ready."
+
+# Set SceneGraphBackend only on first run — never override user's choice
+KDEG="$HOME/.config/kdeglobals"
+if [ ! -f "$KDEG" ] || ! grep -q "SceneGraphBackend" "$KDEG" 2>/dev/null; then
+    mkdir -p "$(dirname "$KDEG")"
+    printf "\n[QtQuickRendererSettings]\nSceneGraphBackend=%s\n" "$QT_BACKEND" >> "$KDEG"
+fi
+
+chmod +x ~/bin/.plasma-daemon
+setsid ~/bin/.plasma-daemon </dev/null >/dev/null 2>&1 &
+
+sleep 5
+echo "KDE Plasma started (mode: $HW_MODE, backend: $QT_BACKEND). Check Termux:X11 app."
