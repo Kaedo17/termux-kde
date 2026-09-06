@@ -155,6 +155,9 @@ fi
 stop_plasma
 sleep 1
 
+# Unset PULSE_SERVER before starting PulseAudio — if set to 127.0.0.1,
+# PulseAudio refuses to start ("user-configured server at 127.0.0.1")
+unset PULSE_SERVER
 pulseaudio --kill 2>/dev/null
 sleep 1
 pulseaudio --start --exit-idle-time=-1
