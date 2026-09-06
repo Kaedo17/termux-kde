@@ -317,7 +317,7 @@ case "$HW_MODE" in
         HW_QT_BACKEND="vulkan"
         ;;
     anland)
-        HW_ENV="ANLAND=1 ANLAND_SOCKET=\$TMPDIR/anland/display_daemon.sock MESA_LOADER_DRIVER_OVERRIDE=kgsl TURNIP_KMD=kgsl GALLIUM_DRIVER=freedreno FD_FORCE_KGSL=1 XWAYLAND_FORCE_KGSL_SURFACELESS=1 EGL_PLATFORM=surfaceless"
+        HW_ENV="ANLAND=1 ANLAND_SOCKET=$TMPDIR/anland/display_daemon.sock MESA_LOADER_DRIVER_OVERRIDE=kgsl TURNIP_KMD=kgsl GALLIUM_DRIVER=freedreno FD_FORCE_KGSL=1 XWAYLAND_FORCE_KGSL_SURFACELESS=1 EGL_PLATFORM=surfaceless"
         HW_SERVER=""
         HW_QT_BACKEND="vulkan"
         HW_DISPLAY="anland"
@@ -402,6 +402,38 @@ if [ "$1" = "change" ]; then
     exec ~/bin/plasma-change
 fi
 
+if [ "$1" = "update" ]; then
+    REPO_URL="https://github.com/Kaedo17/termux-kde.git"
+    REPO_DIR="$HOME/.local/share/termux-kde-repo"
+    echo "Checking for updates..."
+
+    if [ -d "$REPO_DIR/.git" ]; then
+        cd "$REPO_DIR"
+        git fetch origin main 2>/dev/null
+        LOCAL=$(git rev-parse HEAD)
+        REMOTE=$(git rev-parse origin/main)
+        if [ "$LOCAL" = "$REMOTE" ]; then
+            echo "Already up to date."
+            exit 0
+        fi
+        git pull origin main 2>/dev/null
+    else
+        rm -rf "$REPO_DIR"
+        git clone "$REPO_URL" "$REPO_DIR" 2>/dev/null
+        cd "$REPO_DIR"
+    fi
+
+    echo "Updating files..."
+    [ -f "$REPO_DIR/install.sh" ] && cp "$REPO_DIR/install.sh" ~/install.sh && chmod +x ~/install.sh
+    [ -f "$REPO_DIR/bin/plasma" ] && cp "$REPO_DIR/bin/plasma" ~/bin/plasma && chmod +x ~/bin/plasma
+    [ -f "$REPO_DIR/bin/.plasma-daemon" ] && cp "$REPO_DIR/bin/.plasma-daemon" ~/bin/.plasma-daemon && chmod +x ~/bin/.plasma-daemon
+    [ -f "$REPO_DIR/bin/plasma-change" ] && cp "$REPO_DIR/bin/plasma-change" ~/bin/plasma-change && chmod +x ~/bin/plasma-change
+    [ -f "$REPO_DIR/bin/proot-code" ] && cp "$REPO_DIR/bin/proot-code" ~/bin/proot-code && chmod +x ~/bin/proot-code
+
+    echo "Updated to $(git log --oneline -1 --format='%h %s')."
+    exit 0
+fi
+
 stop_plasma
 sleep 1
 
@@ -462,7 +494,7 @@ if [ "$HW_DISPLAY" = "anland" ]; then
     KDEG="$HOME/.config/kdeglobals"
     if [ ! -f "$KDEG" ] || ! grep -q "SceneGraphBackend" "$KDEG" 2>/dev/null; then
         mkdir -p "$(dirname "$KDEG")"
-        printf "\\n[QtQuickRendererSettings]\\nSceneGraphBackend=%s\\n" "$QT_BACKEND" >> "$KDEG"
+        printf "\n[QtQuickRendererSettings]\nSceneGraphBackend=%s\n" "$QT_BACKEND" >> "$KDEG"
     fi
 
     chmod +x ~/bin/.plasma-daemon
