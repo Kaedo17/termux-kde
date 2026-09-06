@@ -552,7 +552,7 @@ echo ""
 echo "  1) Hardware Acceleration  [$CURRENT_MODE]"
 echo "  2) Qt Rendering Backend   [$CURRENT_BACKEND]"
 echo "  3) Proot Username         [$CURRENT_USER]"
-echo "  4) Termux Prompt          [$(grep '^export PS1=' ~/.bashrc 2>/dev/null | sed "s/.*PS1=//;s/'//g" || echo '\\u@\\h:\\w\\$')]"
+echo "  4) Termux Username        [${USER:-u0_a337}]"
 echo ""
 read -rp "Select [1-4] (q=cancel): " SECTION
 echo ""
@@ -639,26 +639,28 @@ case "$SECTION" in
         fi
         ;;
     4)
-        echo "--- Termux Prompt ---"
+        echo "--- Termux Username ---"
         echo ""
-        echo "Changes the username shown in your terminal prompt."
-        echo "Current PS1: $(grep '^export PS1=' ~/.bashrc 2>/dev/null | sed "s/.*PS1=//;s/'//g" || echo '\\u@\\h:\\w\\$')"
+        echo "Changes the username shown in your terminal and KDE."
+        echo "Current username: ${USER:-u0_a337}"
         echo ""
-        read -rp "Enter new prompt name (Enter to keep current): " NEW_NAME
+        read -rp "Enter new username (Enter to keep current): " NEW_NAME
         if [ -n "$NEW_NAME" ]; then
-            if grep -q '^# ---- Termux PS1 ----' ~/.bashrc 2>/dev/null; then
-                sed -i '/^# ---- Termux PS1 ----$/,/^export PS1=.*$/d' ~/.bashrc
+            if grep -q '^# ---- Termux User ----' ~/.bashrc 2>/dev/null; then
+                sed -i '/^# ---- Termux User ----$/,/^export LOGNAME=.*$/d' ~/.bashrc
             fi
-            cat >> ~/.bashrc << PS1_ADDON
+            cat >> ~/.bashrc << USER_ADDON
 
-# ---- Termux PS1 ----
+# ---- Termux User ----
+export USER="$NEW_NAME"
+export LOGNAME="$NEW_NAME"
 export PS1="$NEW_NAME@\\h:\\w\\$ "
-PS1_ADDON
+USER_ADDON
             echo ""
-            echo "Prompt changed to: $NEW_NAME@\h:\w\$ "
-            echo "Open a new terminal to see the change."
+            echo "Username changed to: $NEW_NAME"
+            echo "Open a new terminal or restart KDE to see the change."
         else
-            echo "Prompt unchanged."
+            echo "Username unchanged."
         fi
         ;;
     q|Q)
