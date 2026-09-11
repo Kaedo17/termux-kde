@@ -64,6 +64,7 @@ case "$HW_MODE" in
             *)
                 export MESA_LOADER_DRIVER_OVERRIDE=panfrost
                 export GALLIUM_DRIVER=panfrost
+                export MESA_GL_VERSION_OVERRIDE=4.3
                 ;;
         esac
         ;;
@@ -78,6 +79,10 @@ esac
 
 # Read QT_BACKEND from config (fallback to HW mode default)
 QT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+# Force opengl for Mali+anland — panfrost has no Vulkan support
+if [ "$HW_MODE" = "anland" ] && [ "${_GPU_ANLAND:-}" != "adreno" ]; then
+    QT_BACKEND="opengl"
+fi
 case "$QT_BACKEND" in
     opengl)
         export EPOXY_USE_ANGLE=1

@@ -335,13 +335,14 @@ case "$HW_MODE" in
         case "$_GPU_ANLAND" in
             adreno)
                 HW_ENV="ANLAND=1 ANLAND_SOCKET=$TMPDIR/anland/display_daemon.sock MESA_LOADER_DRIVER_OVERRIDE=kgsl TURNIP_KMD=kgsl GALLIUM_DRIVER=freedreno FD_FORCE_KGSL=1 XWAYLAND_FORCE_KGSL_SURFACELESS=1 EGL_PLATFORM=surfaceless"
+                HW_QT_BACKEND="vulkan"
                 ;;
             *)
                 HW_ENV="ANLAND=1 ANLAND_SOCKET=$TMPDIR/anland/display_daemon.sock MESA_LOADER_DRIVER_OVERRIDE=panfrost GALLIUM_DRIVER=panfrost EGL_PLATFORM=surfaceless"
+                HW_QT_BACKEND="opengl"
                 ;;
         esac
         HW_SERVER=""
-        HW_QT_BACKEND="vulkan"
         HW_DISPLAY="anland"
         ;;
     *)
@@ -355,6 +356,10 @@ esac
 QT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
 if [ -z "$QT_BACKEND" ]; then
     QT_BACKEND="$HW_QT_BACKEND"
+fi
+# Force opengl for Mali+anland — panfrost has no Vulkan support
+if [ "$HW_DISPLAY" = "anland" ] && [ "${_GPU_ANLAND:-}" != "adreno" ]; then
+    QT_BACKEND="opengl"
 fi
 
 # Apply QT_BACKEND-specific environment overrides
@@ -486,7 +491,7 @@ fi
 if [ "$HW_DISPLAY" = "anland" ]; then
     # Create XDG_RUNTIME_DIR with proper permissions
     mkdir -p "$TMPDIR/run"
-    chown -R $(id -un):$(id -gn) "$TMPDIR/run"
+    chown -R $(id -u):$(id -g) "$TMPDIR/run"
     chmod -R 700 "$TMPDIR/run"
     mkdir -p "$TMPDIR/.X11-unix"
     chmod 1777 "$TMPDIR/.X11-unix"
@@ -514,10 +519,12 @@ if [ "$HW_DISPLAY" = "anland" ]; then
 
     echo "Anland display ready."
 
-    # Set SceneGraphBackend only on first run
+    # Force SceneGraphBackend to match QT_BACKEND on every start
     KDEG="$HOME/.config/kdeglobals"
-    if [ ! -f "$KDEG" ] || ! grep -q "SceneGraphBackend" "$KDEG" 2>/dev/null; then
-        mkdir -p "$(dirname "$KDEG")"
+    mkdir -p "$(dirname "$KDEG")"
+    if grep -q "SceneGraphBackend" "$KDEG" 2>/dev/null; then
+        sed -i "s/SceneGraphBackend=.*/SceneGraphBackend=$QT_BACKEND/" "$KDEG"
+    else
         printf "\n[QtQuickRendererSettings]\nSceneGraphBackend=%s\n" "$QT_BACKEND" >> "$KDEG"
     fi
 
@@ -646,6 +653,7 @@ case "$HW_MODE" in
             *)
                 export MESA_LOADER_DRIVER_OVERRIDE=panfrost
                 export GALLIUM_DRIVER=panfrost
+                export MESA_GL_VERSION_OVERRIDE=4.3
                 ;;
         esac
         ;;
@@ -660,6 +668,10 @@ esac
 
 # Read QT_BACKEND from config (fallback to HW mode default)
 QT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
+# Force opengl for Mali+anland — panfrost has no Vulkan support
+if [ "$HW_MODE" = "anland" ] && [ "${_GPU_ANLAND:-}" != "adreno" ]; then
+    QT_BACKEND="opengl"
+fi
 case "$QT_BACKEND" in
     opengl)
         export EPOXY_USE_ANGLE=1
