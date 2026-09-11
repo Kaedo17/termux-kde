@@ -365,11 +365,13 @@ fi
 # Apply QT_BACKEND-specific environment overrides
 case "$QT_BACKEND" in
     opengl)
-        export EPOXY_USE_ANGLE=1
-        export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/gl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        if [ "$HW_DISPLAY" = "anland" ]; then
+            export EPOXY_USE_ANGLE=1
+            export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/gl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        fi
         ;;
     vulkan)
-        if [ "$HW_DISPLAY" != "anland" ] || [ "${_GPU_ANLAND:-}" = "adreno" ]; then
+        if [ "$HW_DISPLAY" = "anland" ]; then
             if [ -z "$EPOXY_USE_ANGLE" ]; then
                 export EPOXY_USE_ANGLE=1
                 export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/vulkan${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -693,11 +695,13 @@ if [ "$HW_MODE" = "anland" ] && [ "${_GPU_ANLAND:-}" != "adreno" ]; then
 fi
 case "$QT_BACKEND" in
     opengl)
-        export EPOXY_USE_ANGLE=1
-        export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/gl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        if [ "$HW_MODE" = "anland" ]; then
+            export EPOXY_USE_ANGLE=1
+            export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/gl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        fi
         ;;
     vulkan)
-        if [ "$HW_MODE" != "anland" ] || [ "${_GPU_ANLAND:-}" = "adreno" ]; then
+        if [ "$HW_MODE" = "anland" ]; then
             if [ -z "$EPOXY_USE_ANGLE" ]; then
                 export EPOXY_USE_ANGLE=1
                 export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/vulkan${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
