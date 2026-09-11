@@ -357,10 +357,6 @@ QT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
 if [ -z "$QT_BACKEND" ]; then
     QT_BACKEND="$HW_QT_BACKEND"
 fi
-# Force opengl for Mali+anland — panfrost has no Vulkan support
-if [ "$HW_DISPLAY" = "anland" ] && [ "${_GPU_ANLAND:-}" != "adreno" ]; then
-    QT_BACKEND="opengl"
-fi
 
 # Apply QT_BACKEND-specific environment overrides
 case "$QT_BACKEND" in
@@ -689,10 +685,6 @@ esac
 
 # Read QT_BACKEND from config (fallback to HW mode default)
 QT_BACKEND=$(grep "^QT_BACKEND=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
-# Force opengl for Mali+anland — panfrost has no Vulkan support
-if [ "$HW_MODE" = "anland" ] && [ "${_GPU_ANLAND:-}" != "adreno" ]; then
-    QT_BACKEND="opengl"
-fi
 case "$QT_BACKEND" in
     opengl)
         if [ "$HW_MODE" = "anland" ]; then
