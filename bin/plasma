@@ -8,6 +8,20 @@ HW_MODE=$(grep "^HW_MODE=" "$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "angle-g
 UPOWER_ENABLED=$(grep "^UPOWER_ENABLED=" "$HW_CONF" 2>/dev/null | cut -d= -f2)
 if [ -z "$UPOWER_ENABLED" ]; then UPOWER_ENABLED="true"; fi
 
+_detect_gpu_anland() {
+    if [ -d /sys/class/kgsl/kgsl-3d0 ] 2>/dev/null; then
+        echo "adreno"
+        return
+    fi
+    local vh
+    vh=$(getprop ro.hardware.vulkan 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    case "$vh" in
+        mali)    echo "mali" ;;
+        xclipse) echo "xclipse" ;;
+        *)       echo "unknown" ;;
+    esac
+}
+
 case "$HW_MODE" in
     software)
         HW_ENV="LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe MESA_GL_VERSION_OVERRIDE=4.3"
@@ -35,7 +49,15 @@ case "$HW_MODE" in
         HW_QT_BACKEND="vulkan"
         ;;
     anland)
-        HW_ENV="ANLAND=1 ANLAND_SOCKET=$TMPDIR/anland/display_daemon.sock MESA_LOADER_DRIVER_OVERRIDE=kgsl TURNIP_KMD=kgsl GALLIUM_DRIVER=freedreno FD_FORCE_KGSL=1 XWAYLAND_FORCE_KGSL_SURFACELESS=1 EGL_PLATFORM=surfaceless"
+        _GPU_ANLAND=$(_detect_gpu_anland)
+        case "$_GPU_ANLAND" in
+            adreno)
+                HW_ENV="ANLAND=1 ANLAND_SOCKET=$TMPDIR/anland/display_daemon.sock MESA_LOADER_DRIVER_OVERRIDE=kgsl TURNIP_KMD=kgsl GALLIUM_DRIVER=freedreno FD_FORCE_KGSL=1 XWAYLAND_FORCE_KGSL_SURFACELESS=1 EGL_PLATFORM=surfaceless"
+                ;;
+            *)
+                HW_ENV="ANLAND=1 ANLAND_SOCKET=$TMPDIR/anland/display_daemon.sock MESA_LOADER_DRIVER_OVERRIDE=panfrost GALLIUM_DRIVER=panfrost EGL_PLATFORM=surfaceless"
+                ;;
+        esac
         HW_SERVER=""
         HW_QT_BACKEND="vulkan"
         HW_DISPLAY="anland"
@@ -60,9 +82,11 @@ case "$QT_BACKEND" in
         export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/gl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         ;;
     vulkan)
-        if [ -z "$EPOXY_USE_ANGLE" ]; then
-            export EPOXY_USE_ANGLE=1
-            export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/vulkan${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        if [ "$HW_DISPLAY" != "anland" ] || [ "${_GPU_ANLAND:-}" = "adreno" ]; then
+            if [ -z "$EPOXY_USE_ANGLE" ]; then
+                export EPOXY_USE_ANGLE=1
+                export LD_LIBRARY_PATH="${PREFIX}/opt/angle-android/vulkan${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            fi
         fi
         ;;
     software)
