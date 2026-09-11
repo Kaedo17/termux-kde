@@ -572,6 +572,23 @@ else
     printf "\n[QtQuickRendererSettings]\nSceneGraphBackend=%s\n" "$QT_BACKEND" >> "$KDEG"
 fi
 
+# Ensure window decorations work on X11 — reset stale Wayland settings
+KWINRC="$HOME/.config/kwinrc"
+if [ -f "$KWINRC" ]; then
+    # Force Breeze decoration theme
+    if grep -q "org.kde.kdecoration2" "$KWINRC" 2>/dev/null; then
+        sed -i 's/^Theme=.*/Theme=breeze/' "$KWINRC"
+    else
+        printf "\n[org.kde.kdecoration2]\nTheme=breeze\n" >> "$KWINRC"
+    fi
+    # Ensure compositing is enabled with OpenGL
+    if grep -q "^\[Compositing\]" "$KWINRC" 2>/dev/null; then
+        sed -i '/^\[Compositing\]/,/^\[/{s/^OpenGLIsSafe=.*/OpenGLIsSafe=true/}' "$KWINRC"
+    fi
+    # Remove any Wayland-only backend override
+    sed -i '/^Backend=wayland$/d' "$KWINRC" 2>/dev/null
+fi
+
 chmod +x ~/bin/.plasma-daemon
 setsid ~/bin/.plasma-daemon </dev/null >/dev/null 2>&1 &
 
