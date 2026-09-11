@@ -281,10 +281,12 @@ fi
 
 echo "X11 display ready."
 
-# Set SceneGraphBackend only on first run — never override user's choice
+# Force SceneGraphBackend to match QT_BACKEND on every start
 KDEG="$HOME/.config/kdeglobals"
-if [ ! -f "$KDEG" ] || ! grep -q "SceneGraphBackend" "$KDEG" 2>/dev/null; then
-    mkdir -p "$(dirname "$KDEG")"
+mkdir -p "$(dirname "$KDEG")"
+if grep -q "SceneGraphBackend" "$KDEG" 2>/dev/null; then
+    sed -i "s/SceneGraphBackend=.*/SceneGraphBackend=$QT_BACKEND/" "$KDEG"
+else
     printf "\n[QtQuickRendererSettings]\nSceneGraphBackend=%s\n" "$QT_BACKEND" >> "$KDEG"
 fi
 
