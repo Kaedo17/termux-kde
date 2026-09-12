@@ -28,9 +28,32 @@ do_shell() {
     chroot_run 'export HOME=/home/kemji; export USER=kemji; exec bash --noprofile'
 }
 
+do_update() {
+    echo "Updating Termux packages..."
+    $PREFIX/bin/pkg update -y 2>&1 | /data/data/com.termux/files/usr/bin/tail -3
+
+    echo "Updating chroot packages..."
+    chroot_run 'DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y' 2>&1 | /data/data/com.termux/files/usr/bin/tail -5
+
+    echo "Updating scripts from git..."
+    REPO_DIR="$HOME/termux-kde"
+    if [ -d "$REPO_DIR/.git" ]; then
+        cd "$REPO_DIR"
+        git pull origin main 2>&1 | /data/data/com.termux/files/usr/bin/tail -3
+        [ -f "$REPO_DIR/bin/plasma-chroot" ] && cp "$REPO_DIR/bin/plasma-chroot" ~/bin/plasma-chroot && chmod +x ~/bin/plasma-chroot
+        [ -f "$REPO_DIR/bin/chroot-shell" ] && cp "$REPO_DIR/bin/chroot-shell" ~/bin/chroot-shell && chmod +x ~/bin/chroot-shell
+        [ -f "$REPO_DIR/bin/chroot-umount" ] && cp "$REPO_DIR/bin/chroot-umount" ~/bin/chroot-umount && chmod +x ~/bin/chroot-umount
+        echo "Scripts updated from $(git log --oneline -1)."
+    else
+        echo "No git repo found at $REPO_DIR. Skipping script update."
+    fi
+    echo "Update complete."
+}
+
 case "${1:-start}" in
-    stop)  stop_all; exit 0 ;;
-    shell) do_shell; exit 0 ;;
+    stop)   stop_all; exit 0 ;;
+    shell)  do_shell; exit 0 ;;
+    update) do_update; exit 0 ;;
 esac
 
 stop_all 2>/dev/null
