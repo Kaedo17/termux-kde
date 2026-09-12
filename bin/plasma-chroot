@@ -4,7 +4,7 @@ ROOTFS="$PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs"
 PIDFILE="$HOME/.plasma-chroot-pid"
 
 chroot_run() {
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; $1'"
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export PULSE_SERVER=unix:/data/data/com.termux/files/usr/tmp/pulse/native; $1'"
 }
 
 stop_all() {
@@ -24,8 +24,8 @@ stop_all() {
 }
 
 do_shell() {
-    su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
-    chroot_run 'export HOME=/home/kemji; export USER=kemji; exec bash --noprofile'
+    su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; mkdir -p $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; mount --bind /data/data/com.termux/files/usr/tmp $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export HOME=/home/kemji; export USER=kemji; exec bash --noprofile'"
 }
 
 do_update() {
@@ -60,7 +60,7 @@ stop_all 2>/dev/null
 sleep 1
 
 # Mount chroot
-su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
+su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; mkdir -p $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; mount --bind /data/data/com.termux/files/usr/tmp $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
 
 # PulseAudio
 unset PULSE_SERVER
@@ -81,6 +81,7 @@ echo "X11 ready. Starting KDE..."
 # Start KDE in chroot, save PID for stop
 su -c "chroot $ROOTFS /bin/bash --noprofile -c '
 export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin
+export SHELL=/bin/bash
 export DISPLAY=:0
 export HOME=/home/kemji
 export USER=kemji
@@ -90,6 +91,7 @@ export XDG_SESSION_TYPE=x11
 export XDG_CURRENT_DESKTOP=KDE
 export DESKTOP_SESSION=plasma
 export LANG=en_US.UTF-8
+export PULSE_SERVER=unix:/data/data/com.termux/files/usr/tmp/pulse/native
 mkdir -p /tmp/runtime-kemji 2>/dev/null
 
 killall -9 kwin_x11 plasmashell dbus-daemon 2>/dev/null
