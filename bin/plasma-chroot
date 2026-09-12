@@ -94,7 +94,16 @@ export LANG=en_US.UTF-8
 export PULSE_SERVER=unix:/data/data/com.termux/files/usr/tmp/pulse/native
 mkdir -p /tmp/runtime-kemji 2>/dev/null
 
-killall -9 kwin_x11 plasmashell dbus-daemon 2>/dev/null
+killall -9 kwin_x11 plasmashell dbus-daemon NetworkManager 2>/dev/null
+sleep 1
+
+# Start system dbus
+mkdir -p /run/dbus 2>/dev/null
+rm -f /run/dbus/pid 2>/dev/null
+dbus-daemon --system --fork 2>/dev/null
+
+# Start NetworkManager
+NetworkManager --daemon 2>/dev/null
 sleep 1
 
 eval \$(dbus-launch --sh-syntax)
