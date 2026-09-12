@@ -81,7 +81,7 @@ do_update() {
     write_bus_conf
 
     echo "Writing default konsole profile (explicit /bin/bash)..."
-    chroot_run 'mkdir -p /home/kemji/.local/share/konsole /usr/share/konsole /etc/xdg/konsole /system/bin && printf "%s\n" "[General]" "Command=/bin/bash" "Name=Shell" "Parent=FALLBACK/" > /home/kemji/.local/share/konsole/Shell.profile && cp /home/kemji/.local/share/konsole/Shell.profile /usr/share/konsole/Shell.profile 2>/dev/null && grep -q DefaultProfile /home/kemji/.config/konsolerc 2>/dev/null || printf "\n[Desktop Entry]\nDefaultProfile=Shell.profile\n" >> /home/kemji/.config/konsolerc && ln -sf /bin/bash /system/bin/sh && echo "SHELL=/bin/bash" > /etc/environment'
+    chroot_run 'mkdir -p /home/kemji/.local/share/konsole /usr/share/konsole /etc/xdg/konsole /system/bin && printf "%s\n" "[General]" "Command=/bin/bash" "Name=Shell" "Parent=FALLBACK/" > /home/kemji/.local/share/konsole/Shell.profile && cp /home/kemji/.local/share/konsole/Shell.profile /usr/share/konsole/Shell.profile 2>/dev/null && grep -q DefaultProfile /home/kemji/.config/konsolerc 2>/dev/null || printf "\n[Desktop Entry]\nDefaultProfile=Shell.profile\n" >> /home/kemji/.config/konsolerc && ln -sf /bin/bash /system/bin/sh && printf "%s\n" "SHELL=/bin/bash" "MOZ_ALLOW_ROOT=1" > /etc/environment && grep -q MOZ_ALLOW_ROOT /home/kemji/.profile 2>/dev/null || printf "\nexport MOZ_ALLOW_ROOT=1\n" >> /home/kemji/.profile && apt-mark hold plasma-pa wireplumber 2>/dev/null'
 
     echo "Syncing PulseAudio cookie..."
     sync_pulse_cookie
