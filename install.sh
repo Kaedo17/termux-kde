@@ -1174,6 +1174,9 @@ if ! id $USER &>/dev/null; then
 else
     echo 'User $USER already exists'
 fi
+mkdir -p /home/$USER/.local/share/konsole
+printf '%s\n' '[General]' 'Command=/bin/bash' 'Name=Shell' 'Parent=FALLBACK/' > /home/$USER/.local/share/konsole/Shell.profile
+grep -q DefaultProfile /home/$USER/.config/konsolerc 2>/dev/null || printf '\n[Desktop Entry]\nDefaultProfile=Shell.profile\n' >> /home/$USER/.config/konsolerc
 \""
 }
 
@@ -1216,7 +1219,7 @@ stop_all() {
 
     pkill -9 -f "termux-x11" 2>/dev/null
 
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; killall -9 kwin_x11 plasmashell plasma_session startplasma-x11 NetworkManager 2>/dev/null; cat /tmp/android-bus.pid 2>/dev/null | xargs -r kill -9 2>/dev/null; rm -f /tmp/dbus-* /tmp/android-bus.addr /tmp/android-bus.err /tmp/android-bus.pid /tmp/pulse-sock /run/dbus/pid /run/dbus/system_bus_socket 2>/dev/null'"
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; killall -9 kwin_x11 plasmashell plasma_session startplasma-x11 konsole NetworkManager 2>/dev/null; cat /tmp/android-bus.pid 2>/dev/null | xargs -r kill -9 2>/dev/null; rm -f /tmp/dbus-* /tmp/android-bus.addr /tmp/android-bus.err /tmp/android-bus.pid /tmp/pulse-sock /run/dbus/pid /run/dbus/system_bus_socket 2>/dev/null'"
 
     echo "Stopped."
 }
@@ -1241,6 +1244,9 @@ do_update() {
     echo "Restoring stock dbus config (if modified) and writing Android bus config..."
     chroot_run '[ -f /usr/share/dbus-1/system.conf.orig ] && cp /usr/share/dbus-1/system.conf.orig /usr/share/dbus-1/system.conf; rm -f /etc/dbus-1/system-local.conf'
     write_bus_conf
+
+    echo "Writing default konsole profile (explicit /bin/bash)..."
+    chroot_run 'mkdir -p /home/kemji/.local/share/konsole && printf "%s\n" "[General]" "Command=/bin/bash" "Name=Shell" "Parent=FALLBACK/" > /home/kemji/.local/share/konsole/Shell.profile && grep -q DefaultProfile /home/kemji/.config/konsolerc 2>/dev/null || printf "\n[Desktop Entry]\nDefaultProfile=Shell.profile\n" >> /home/kemji/.config/konsolerc'
 
     echo "Syncing PulseAudio cookie..."
     sync_pulse_cookie
@@ -1318,7 +1324,7 @@ chown -R kemji:kemji /home/kemji/.config/pulse 2>/dev/null
 mkdir -p /tmp/runtime-kemji 2>/dev/null
 chmod 700 /tmp/runtime-kemji 2>/dev/null
 
-killall -9 kwin_x11 plasmashell plasma_session startplasma-x11 NetworkManager 2>/dev/null
+killall -9 kwin_x11 plasmashell plasma_session startplasma-x11 konsole NetworkManager 2>/dev/null
 cat /tmp/android-bus.pid 2>/dev/null | xargs -r kill -9 2>/dev/null
 rm -f /tmp/dbus-* /tmp/android-bus.addr /tmp/android-bus.err /tmp/android-bus.pid /run/dbus/pid /run/dbus/system_bus_socket 2>/dev/null
 sleep 1
