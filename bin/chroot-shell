@@ -1,0 +1,14 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# chroot-shell - Open a shell in the Ubuntu chroot
+ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
+CHROOT_USER="kemji"
+
+su -c "mount -t proc proc $ROOTFS/proc" 2>/dev/null
+su -c "mount -t sysfs sysfs $ROOTFS/sys" 2>/dev/null
+su -c "mount --bind /dev $ROOTFS/dev" 2>/dev/null
+su -c "mount --bind /dev/pts $ROOTFS/dev/pts" 2>/dev/null
+su -c "mount --bind /data/data/com.termux/files/usr/tmp $ROOTFS/tmp" 2>/dev/null
+su -c "cp /etc/resolv.conf $ROOTFS/etc/resolv.conf" 2>/dev/null
+
+echo "Entering chroot as $CHROOT_USER..."
+su -c "chroot $ROOTFS /bin/su - $CHROOT_USER"
