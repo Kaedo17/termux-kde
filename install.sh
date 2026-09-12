@@ -1155,6 +1155,7 @@ apt-get install -y --no-install-recommends \
 locale-gen en_US.UTF-8 2>/dev/null
 cp /etc/xdg/menus/plasma-applications.menu /etc/xdg/menus/applications.menu 2>/dev/null
 echo 'LANG=en_US.UTF-8' > /etc/default/locale
+printf '%s\n' '<!DOCTYPE busconfig PUBLIC \"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" \"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">' '<busconfig>' '<type>session</type>' '<listen>unix:path=/run/dbus/system_bus_socket</listen>' '<policy context=\"default\">' '<allow send_destination=\"*\" eavesdrop=\"true\"/>' '<allow eavesdrop=\"true\"/>' '<allow own=\"*\"/>' '</policy>' '</busconfig>' > /etc/dbus-1/android-bus.conf
 \""
 }
 
@@ -1187,8 +1188,23 @@ PREFIX="/data/data/com.termux/files/usr"
 ROOTFS="$PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs"
 PIDFILE="$HOME/.plasma-chroot-pid"
 
+find_pulse_socket() {
+    find "$PREFIX/tmp" -maxdepth 2 -name "native" -type s 2>/dev/null | head -1
+}
+
+do_mount() {
+    su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; mkdir -p $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
+}
+
+sync_pulse_cookie() {
+    # Termux PulseAudio cookie -> chroot so KDE audio authenticates
+    if [ -f "$HOME/.config/pulse/cookie" ]; then
+        su -c "mkdir -p $ROOTFS/home/kemji/.config/pulse $ROOTFS/root/.config/pulse 2>/dev/null; cp $HOME/.config/pulse/cookie $ROOTFS/home/kemji/.config/pulse/cookie 2>/dev/null; cp $HOME/.config/pulse/cookie $ROOTFS/root/.config/pulse/cookie 2>/dev/null; chmod 600 $ROOTFS/home/kemji/.config/pulse/cookie $ROOTFS/root/.config/pulse/cookie 2>/dev/null"
+    fi
+}
+
 chroot_run() {
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; $1'"
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:$PULSE_SOCK; $1'"
 }
 
 stop_all() {
@@ -1196,32 +1212,80 @@ stop_all() {
         kill -9 "$(cat "$PIDFILE")" 2>/dev/null
         rm -f "$PIDFILE"
     fi
-    $PREFIX/bin/pulseaudio --kill 2>/dev/null
+
     pkill -9 -f "termux-x11" 2>/dev/null
-    chroot_run 'killall -9 kwin_x11 plasmashell plasma_session dbus-daemon startplasma-x11 2>/dev/null'
-    chroot_run 'rm -f /tmp/dbus-* 2>/dev/null'
+
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; killall -9 kwin_x11 plasmashell plasma_session startplasma-x11 NetworkManager 2>/dev/null; read BUSPID < /tmp/android-bus.pid 2>/dev/null; [ -n \"$BUSPID\" ] && kill -9 $BUSPID 2>/dev/null; rm -f /tmp/dbus-* /tmp/android-bus.addr /tmp/android-bus.err /tmp/android-bus.pid /tmp/pulse-sock /run/dbus/pid /run/dbus/system_bus_socket 2>/dev/null'"
+
     echo "Stopped."
 }
 
 do_shell() {
-    su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
-    chroot_run 'export HOME=/home/kemji; export USER=kemji; exec bash --noprofile'
+    do_mount
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export HOME=/home/kemji; export USER=kemji; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:$PULSE_SOCK; exec bash --noprofile'"
+}
+
+write_bus_conf() {
+    # Android-compatible system bus: stock system bus drops caps, which Android kernels deny
+    chroot_run 'printf "%s\n" "<!DOCTYPE busconfig PUBLIC \"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" \"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">" "<busconfig>" "<type>session</type>" "<listen>unix:path=/run/dbus/system_bus_socket</listen>" "<policy context=\"default\">" "<allow send_destination=\"*\" eavesdrop=\"true\"/>" "<allow eavesdrop=\"true\"/>" "<allow own=\"*\"/>" "</policy>" "</busconfig>" > /etc/dbus-1/android-bus.conf'
+}
+
+do_update() {
+    echo "Updating Termux packages..."
+    $PREFIX/bin/pkg update -y 2>&1 | tail -3
+
+    echo "Updating chroot packages..."
+    chroot_run 'DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && rm -f /var/lib/dpkg/info/snapd.* /var/lib/dpkg/info/apparmor.* 2>/dev/null && dpkg --configure -a --force-all 2>/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plasma-desktop plasma-workspace plasma-nm plasma-pa plasma-discover kwin-x11 kwin-wayland kde-style-breeze kde-cli-tools konsole dolphin kate ark gwenview kcalc okular systemsettings firefox dbus-x11 x11-xserver-utils x11-apps mesa-utils libgl1-mesa-dri libglx-mesa0 libegl-mesa0 pulseaudio sudo wget curl net-tools iputils-ping && locale-gen en_US.UTF-8 2>/dev/null && cp /etc/xdg/menus/plasma-applications.menu /etc/xdg/menus/applications.menu 2>/dev/null && echo "LANG=en_US.UTF-8" > /etc/default/locale' 2>&1 | tail -5
+
+    echo "Restoring stock dbus config (if modified) and writing Android bus config..."
+    chroot_run '[ -f /usr/share/dbus-1/system.conf.orig ] && cp /usr/share/dbus-1/system.conf.orig /usr/share/dbus-1/system.conf; rm -f /etc/dbus-1/system-local.conf'
+    write_bus_conf
+
+    echo "Syncing PulseAudio cookie..."
+    sync_pulse_cookie
+
+    echo "Updating scripts from git..."
+    REPO_DIR="$HOME/termux-kde"
+    if [ -d "$REPO_DIR/.git" ]; then
+        cd "$REPO_DIR"
+        git pull origin main 2>&1 | tail -3
+        [ -f "$REPO_DIR/bin/plasma-chroot" ] && cp "$REPO_DIR/bin/plasma-chroot" ~/bin/plasma-chroot && chmod +x ~/bin/plasma-chroot
+        [ -f "$REPO_DIR/bin/chroot-shell" ] && cp "$REPO_DIR/bin/chroot-shell" ~/bin/chroot-shell && chmod +x ~/bin/chroot-shell
+        [ -f "$REPO_DIR/bin/chroot-umount" ] && cp "$REPO_DIR/bin/chroot-umount" ~/bin/chroot-umount && chmod +x ~/bin/chroot-umount
+        echo "Scripts updated from $(git log --oneline -1)."
+    else
+        echo "No git repo found at $REPO_DIR. Skipping script update."
+    fi
+    echo "Update complete."
 }
 
 case "${1:-start}" in
-    stop)  stop_all; exit 0 ;;
-    shell) do_shell; exit 0 ;;
+    stop)   stop_all; exit 0 ;;
+    shell)  do_shell; exit 0 ;;
+    update) do_update; exit 0 ;;
 esac
 
 stop_all 2>/dev/null
 sleep 1
 
-su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
+do_mount
+sync_pulse_cookie
 
+# PulseAudio
 unset PULSE_SERVER
 $PREFIX/bin/pulseaudio --kill 2>/dev/null; sleep 1
-$PREFIX/bin/pulseaudio --start --exit-idle-time=-1 2>/dev/null; sleep 1
+$PREFIX/bin/pulseaudio --start --exit-idle-time=-1 2>/dev/null; sleep 2
+sync_pulse_cookie
 
+PULSE_SOCK=$(find_pulse_socket)
+if [ -z "$PULSE_SOCK" ]; then
+    echo "ERROR: PulseAudio socket not found"
+    exit 1
+fi
+echo "PulseAudio socket: $PULSE_SOCK"
+echo "$PULSE_SOCK" > "$ROOTFS/tmp/pulse-sock"
+
+# Termux:X11
 $PREFIX/bin/am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity &>/dev/null
 sleep 2
 setsid $PREFIX/bin/termux-x11 :0 </dev/null >/dev/null 2>&1 &
@@ -1232,8 +1296,10 @@ while [ ! -e "${TMPDIR}/.X11-unix/X0" ] && [ $TRIES -lt 15 ]; do sleep 1; TRIES=
 [ ! -e "${TMPDIR}/.X11-unix/X0" ] && echo "ERROR: X11 not ready" && exit 1
 echo "X11 ready. Starting KDE..."
 
+# Start KDE in chroot (single-quoted: no host expansion inside)
 su -c "chroot $ROOTFS /bin/bash --noprofile -c '
 export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin
+export SHELL=/bin/bash
 export DISPLAY=:0
 export HOME=/home/kemji
 export USER=kemji
@@ -1243,11 +1309,35 @@ export XDG_SESSION_TYPE=x11
 export XDG_CURRENT_DESKTOP=KDE
 export DESKTOP_SESSION=plasma
 export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
+read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null
+export PULSE_SERVER=unix:$PULSE_SOCK
+chown -R kemji:kemji /home/kemji/.config/pulse 2>/dev/null
 mkdir -p /tmp/runtime-kemji 2>/dev/null
-killall -9 kwin_x11 plasmashell dbus-daemon 2>/dev/null
+chmod 700 /tmp/runtime-kemji 2>/dev/null
+
+killall -9 kwin_x11 plasmashell plasma_session startplasma-x11 NetworkManager 2>/dev/null
+read BUSPID < /tmp/android-bus.pid 2>/dev/null
+[ -n "$BUSPID" ] && kill -9 $BUSPID 2>/dev/null
+rm -f /tmp/dbus-* /tmp/android-bus.addr /tmp/android-bus.err /tmp/android-bus.pid /run/dbus/pid /run/dbus/system_bus_socket 2>/dev/null
 sleep 1
+
+# Android-compatible system bus (stock system bus cannot drop caps on Android kernels)
+if [ ! -f /etc/dbus-1/android-bus.conf ]; then
+    printf \"%s\n\" \"<!DOCTYPE busconfig PUBLIC '-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd'>\" \"<busconfig>\" \"<type>session</type>\" \"<listen>unix:path=/run/dbus/system_bus_socket</listen>\" \"<policy context='default'>\" \"<allow send_destination='*' eavesdrop='true'/>\" \"<allow eavesdrop='true'/>\" \"<allow own='*'/>\" \"</policy>\" \"</busconfig>\" > /etc/dbus-1/android-bus.conf
+fi
+dbus-daemon --config-file=/etc/dbus-1/android-bus.conf --print-address=1 --nopidfile > /tmp/android-bus.addr 2> /tmp/android-bus.err &
+echo $! > /tmp/android-bus.pid
+sleep 1
+
+# NetworkManager on the system bus
+NetworkManager 2>/dev/null &
+sleep 2
+
 eval $(dbus-launch --sh-syntax)
 export DBUS_SESSION_BUS_ADDRESS
+
 kwin_x11 --replace &
 sleep 2
 plasmashell &
@@ -1266,8 +1356,8 @@ PLASMA_SCRIPT
 #!/data/data/com.termux/files/usr/bin/bash
 PREFIX="/data/data/com.termux/files/usr"
 ROOTFS="$PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs"
-su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
-su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export HOME=/home/kemji; export USER=kemji; exec bash --noprofile'"
+su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; mkdir -p $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
+su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export HOME=/home/kemji; export USER=kemji; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:$PULSE_SOCK; exec bash --noprofile'"
 CHROOT_SHELL_SCRIPT
     chmod +x ~/bin/chroot-shell
 
@@ -1275,7 +1365,7 @@ CHROOT_SHELL_SCRIPT
 #!/data/data/com.termux/files/usr/bin/bash
 ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
 echo "Unmounting chroot filesystems..."
-su -c "umount $ROOTFS/dev/pts 2>/dev/null; umount $ROOTFS/dev 2>/dev/null; umount $ROOTFS/sys 2>/dev/null; umount $ROOTFS/proc 2>/dev/null; umount $ROOTFS/tmp 2>/dev/null"
+su -c "umount $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; umount $ROOTFS/tmp 2>/dev/null; umount $ROOTFS/dev/pts 2>/dev/null; umount $ROOTFS/dev 2>/dev/null; umount $ROOTFS/sys 2>/dev/null; umount $ROOTFS/proc 2>/dev/null"
 echo "Done."
 UMOUNT_SCRIPT
     chmod +x ~/bin/chroot-umount
