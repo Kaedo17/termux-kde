@@ -1,21 +1,35 @@
 #!/data/data/com.termux/files/usr/bin/bash
 PREFIX="/data/data/com.termux/files/usr"
 ROOTFS="$PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs"
+PIDFILE="$HOME/.plasma-chroot-pid"
+
+chroot_run() {
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; $1'"
+}
 
 stop_all() {
+    # Kill the background tail -f process
+    if [ -f "$PIDFILE" ]; then
+        kill -9 "$(cat "$PIDFILE")" 2>/dev/null
+        rm -f "$PIDFILE"
+    fi
+
     $PREFIX/bin/pulseaudio --kill 2>/dev/null
-    killall -9 termux-x11 2>/dev/null
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'killall -9 kwin_x11 plasmashell plasma_session dbus-daemon 2>/dev/null'" 2>/dev/null
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'rm -f /tmp/dbus-* 2>/dev/null'" 2>/dev/null
+    pkill -9 -f "termux-x11" 2>/dev/null
+
+    chroot_run 'killall -9 kwin_x11 plasmashell plasma_session dbus-daemon startplasma-x11 2>/dev/null'
+    chroot_run 'rm -f /tmp/dbus-* 2>/dev/null'
+
+    echo "Stopped."
 }
 
 do_shell() {
     su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export HOME=/home/kemji; export USER=kemji; exec bash --noprofile'"
+    chroot_run 'export HOME=/home/kemji; export USER=kemji; exec bash --noprofile'
 }
 
 case "${1:-start}" in
-    stop)  stop_all; echo "Stopped."; exit 0 ;;
+    stop)  stop_all; exit 0 ;;
     shell) do_shell; exit 0 ;;
 esac
 
@@ -41,7 +55,7 @@ while [ ! -e "${TMPDIR}/.X11-unix/X0" ] && [ $TRIES -lt 15 ]; do sleep 1; TRIES=
 [ ! -e "${TMPDIR}/.X11-unix/X0" ] && echo "ERROR: X11 not ready" && exit 1
 echo "X11 ready. Starting KDE..."
 
-# Start KDE as root with kemji's HOME (avoids keyring issue)
+# Start KDE in chroot, save PID for stop
 su -c "chroot $ROOTFS /bin/bash --noprofile -c '
 export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin
 export DISPLAY=:0
@@ -66,7 +80,8 @@ sleep 2
 plasmashell &
 sleep 3
 exec tail -f /dev/null
-' &" &>/dev/null &
+'" &
+echo $! > "$PIDFILE"
 
 sleep 5
 echo "KDE Plasma started. Open Termux:X11 app on your phone."

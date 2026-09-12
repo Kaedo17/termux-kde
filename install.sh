@@ -98,7 +98,7 @@ select_mode() {
 # ============================================================
 
 total_steps_native=14
-total_steps_chroot=10
+total_steps_chroot=9
 
 get_total_steps() {
     if [ "$INSTALL_MODE" = "chroot" ]; then
@@ -1112,10 +1112,53 @@ HOSTS"
 }
 
 chroot_step_4() {
-    info "Creating chroot user: ${PROOT_USER:-kemji}"
-    local USER="${PROOT_USER:-kemji}"
+    info "Installing KDE Plasma, Firefox, and apps in chroot (this may take a while)..."
 
-    su -c "chroot $CHROOT_DIR /bin/bash -c \"
+    su -c "chroot $CHROOT_DIR /bin/bash --noprofile -c \"
+export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin
+export DEBIAN_FRONTEND=noninteractive
+rm -f /var/lib/dpkg/info/snapd.* /var/lib/dpkg/info/apparmor.* 2>/dev/null
+dpkg --configure -a --force-all 2>/dev/null
+apt-get update
+apt-get install -y --no-install-recommends \
+    plasma-desktop \
+    plasma-workspace \
+    kwin-x11 \
+    kwin-wayland \
+    kde-style-breeze \
+    kde-cli-tools \
+    konsole \
+    dolphin \
+    kate \
+    ark \
+    gwenview \
+    kcalc \
+    okular \
+    systemsettings \
+    firefox \
+    dbus-x11 \
+    x11-xserver-utils \
+    x11-apps \
+    mesa-utils \
+    libgl1-mesa-dri \
+    libgl1-mesa-glx \
+    libgles2-mesa \
+    libegl1-mesa \
+    pulseaudio \
+    sudo \
+    wget \
+    curl \
+    net-tools \
+    iputils-ping
+\""
+}
+
+chroot_step_5() {
+    info "Creating chroot user: ${PROOT_USER:-kemji}"
+
+    local USER="${PROOT_USER:-kemji}"
+    su -c "chroot $CHROOT_DIR /bin/bash --noprofile -c \"
+export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin
 if ! id $USER &>/dev/null; then
     useradd -m -s /bin/bash $USER
     echo '$USER ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/$USER
@@ -1127,196 +1170,113 @@ fi
 \""
 }
 
-chroot_step_5() {
-    info "Installing KDE Plasma in chroot (this may take a while)..."
-
-    su -c "chroot $CHROOT_DIR /bin/bash -c \"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y --no-install-recommends \
-    ubuntu-desktop \
-    kde-standard \
-    dbus-x11 \
-    x11-xserver-utils \
-    mesa-utils \
-    pulseaudio \
-    sudo \
-    wget \
-    curl \
-    net-tools \
-    iputils-ping \
-    software-properties-common \
-    apt-transport-https \
-    ca-certificates \
-    gnupg
-\""
-}
-
 chroot_step_6() {
-    info "Installing GPU acceleration in chroot..."
-
-    su -c "chroot $CHROOT_DIR /bin/bash -c \"
-export DEBIAN_FRONTEND=noninteractive
-apt-get install -y --no-install-recommends \
-    mesa-utils \
-    libgl1-mesa-dri \
-    libgl1-mesa-glx \
-    libgles2-mesa \
-    libegl1-mesa \
-    vulkan-tools || true
-\""
-}
-
-chroot_step_7() {
     info "Creating chroot launcher scripts..."
     mkdir -p ~/bin
 
     local USER="${PROOT_USER:-kemji}"
 
-    cat > ~/bin/plasma-chroot << PLASMA_CHROOT_SCRIPT
+    cat > ~/bin/plasma-chroot << 'PLASMA_SCRIPT'
 #!/data/data/com.termux/files/usr/bin/bash
+PREFIX="/data/data/com.termux/files/usr"
+ROOTFS="$PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs"
+PIDFILE="$HOME/.plasma-chroot-pid"
 
-# plasma-chroot - Start KDE Plasma from Ubuntu chroot
-# Usage: plasma-chroot [start|stop]
+chroot_run() {
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; $1'"
+}
 
-CHROOT_DIR="$CHROOT_DIR"
-CHROOT_USER="$USER"
-HW_CONF="$HOME/.local/share/plasma-hw.conf"
-HW_MODE=\$(grep "^HW_MODE=" "\$HW_CONF" 2>/dev/null | cut -d= -f2 || echo "angle-gl")
+stop_all() {
+    if [ -f "$PIDFILE" ]; then
+        kill -9 "$(cat "$PIDFILE")" 2>/dev/null
+        rm -f "$PIDFILE"
+    fi
+    $PREFIX/bin/pulseaudio --kill 2>/dev/null
+    pkill -9 -f "termux-x11" 2>/dev/null
+    chroot_run 'killall -9 kwin_x11 plasmashell plasma_session dbus-daemon startplasma-x11 2>/dev/null'
+    chroot_run 'rm -f /tmp/dbus-* 2>/dev/null'
+    echo "Stopped."
+}
 
-case "\$1" in
-    stop)
-        echo "Shutting down chroot KDE Plasma..."
-        su -c "chroot \$CHROOT_DIR /bin/bash -c 'export DISPLAY=:0; killall -9 startplasma-x11 plasmashell kwin_x11 kded6 2>/dev/null'"
-        su -c "killall -9 virgl_test_server_android 2>/dev/null"
-        su -c "killall -9 termux-x11 2>/dev/null"
-        pulseaudio --kill 2>/dev/null
-        echo "Done."
-        exit 0
-        ;;
+do_shell() {
+    su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
+    chroot_run 'export HOME=/home/kemji; export USER=kemji; exec bash --noprofile'
+}
+
+case "${1:-start}" in
+    stop)  stop_all; exit 0 ;;
+    shell) do_shell; exit 0 ;;
 esac
 
-# Stop any existing session
-\$0 stop 2>/dev/null
+stop_all 2>/dev/null
 sleep 1
 
-# Unset PULSE_SERVER before starting PulseAudio
+su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
+
 unset PULSE_SERVER
-pulseaudio --kill 2>/dev/null
-sleep 1
-pulseaudio --start --exit-idle-time=-1
+$PREFIX/bin/pulseaudio --kill 2>/dev/null; sleep 1
+$PREFIX/bin/pulseaudio --start --exit-idle-time=-1 2>/dev/null; sleep 1
 
-sleep 1
-PULSE_SOCK=\$(ls /data/data/com.termux/files/usr/tmp/pulse*/native 2>/dev/null | head -1)
-if [ -n "\$PULSE_SOCK" ]; then
-    export PULSE_SERVER="unix:\$PULSE_SOCK"
-else
-    export PULSE_SERVER=127.0.0.1
-fi
-
-# Start virgl renderer if needed (native Termux side)
-case "\$HW_MODE" in
-    software|angle-gl|angle-vulkan)
-        setsid virgl_test_server_android --angle-gl </dev/null >/dev/null 2>&1 &
-        sleep 1
-        ;;
-esac
-
-# Start Termux:X11
-am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity &>/dev/null
+$PREFIX/bin/am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity &>/dev/null
+sleep 2
+setsid $PREFIX/bin/termux-x11 :0 </dev/null >/dev/null 2>&1 &
 sleep 3
-setsid termux-x11 :0 </dev/null >/dev/null 2>&1 &
-sleep 5
 
 TRIES=0
-while [ ! -e "\${TMPDIR}/.X11-unix/X0" ] && [ \$TRIES -lt 20 ]; do
-    sleep 1
-    TRIES=\$((TRIES + 1))
-done
+while [ ! -e "${TMPDIR}/.X11-unix/X0" ] && [ $TRIES -lt 15 ]; do sleep 1; TRIES=$((TRIES+1)); done
+[ ! -e "${TMPDIR}/.X11-unix/X0" ] && echo "ERROR: X11 not ready" && exit 1
+echo "X11 ready. Starting KDE..."
 
-if [ ! -e "\${TMPDIR}/.X11-unix/X0" ]; then
-    echo "ERROR: X11 display not ready. Is Termux:X11 app installed?"
-    exit 1
-fi
-
-echo "X11 display ready."
-
-# Mount chroot filesystems
-su -c "mount -t proc proc \$CHROOT_DIR/proc" 2>/dev/null
-su -c "mount -t sysfs sysfs \$CHROOT_DIR/sys" 2>/dev/null
-su -c "mount --bind /dev \$CHROOT_DIR/dev" 2>/dev/null
-su -c "mount --bind /dev/pts \$CHROOT_DIR/dev/pts" 2>/dev/null
-su -c "mount --bind /data/data/com.termux/files/usr/tmp \$CHROOT_DIR/tmp" 2>/dev/null
-
-# Copy resolv.conf
-su -c "cp /etc/resolv.conf \$CHROOT_DIR/etc/resolv.conf" 2>/dev/null || true
-
-# Start KDE in chroot
-info() { echo -e "\033[0;32m[INFO]\033[0m \$*"; }
-info "Starting KDE Plasma in chroot..."
-
-su -c "chroot \$CHROOT_DIR /bin/bash -c \"
-export HOME=/home/$CHROOT_USER
-export USER=$CHROOT_USER
-export LOGNAME=$CHROOT_USER
+su -c "chroot $ROOTFS /bin/bash --noprofile -c '
+export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin
 export DISPLAY=:0
-export XDG_RUNTIME_DIR=/tmp
-export PULSE_SERVER=unix:\$XDG_RUNTIME_DIR/pulse/native
-export QT_SELECT=qt5
-
-# Start dbus
-eval \\\$(dbus-launch --sh-syntax)
+export HOME=/home/kemji
+export USER=kemji
+export LOGNAME=kemji
+export XDG_RUNTIME_DIR=/tmp/runtime-kemji
+export XDG_SESSION_TYPE=x11
+export XDG_CURRENT_DESKTOP=KDE
+export DESKTOP_SESSION=plasma
+export LANG=en_US.UTF-8
+mkdir -p /tmp/runtime-kemji 2>/dev/null
+killall -9 kwin_x11 plasmashell dbus-daemon 2>/dev/null
+sleep 1
+eval $(dbus-launch --sh-syntax)
 export DBUS_SESSION_BUS_ADDRESS
+kwin_x11 --replace &
+sleep 2
+plasmashell &
+sleep 3
+exec tail -f /dev/null
+'" &
+echo $! > "$PIDFILE"
 
-# Start KDE
-startplasma-x11 &
-KDE_PID=\\\$!
-
-# Wait for KDE to finish
-wait \\\$KDE_PID
-\""
-PLASMA_CHROOT_SCRIPT
+sleep 5
+echo "KDE Plasma started. Open Termux:X11 app on your phone."
+echo "Run 'plasma-chroot stop' to stop."
+PLASMA_SCRIPT
     chmod +x ~/bin/plasma-chroot
 
     cat > ~/bin/chroot-shell << 'CHROOT_SHELL_SCRIPT'
 #!/data/data/com.termux/files/usr/bin/bash
-# chroot-shell - Open a shell in the chroot
-
-CHROOT_DIR="$HOME/chroot-ubuntu"
-CHROOT_USER="${PROOT_USER:-kemji}"
-
-# Mount filesystems if not already mounted
-su -c "mount -t proc proc $CHROOT_DIR/proc" 2>/dev/null
-su -c "mount -t sysfs sysfs $CHROOT_DIR/sys" 2>/dev/null
-su -c "mount --bind /dev $CHROOT_DIR/dev" 2>/dev/null
-su -c "mount --bind /dev/pts $CHROOT_DIR/dev/pts" 2>/dev/null
-su -c "mount --bind /data/data/com.termux/files/usr/tmp $CHROOT_DIR/tmp" 2>/dev/null
-su -c "cp /etc/resolv.conf $CHROOT_DIR/etc/resolv.conf" 2>/dev/null || true
-
-echo "Entering chroot shell as $CHROOT_USER..."
-su -c "chroot $CHROOT_DIR /bin/su - $CHROOT_USER"
+PREFIX="/data/data/com.termux/files/usr"
+ROOTFS="$PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs"
+su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
+su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export HOME=/home/kemji; export USER=kemji; exec bash --noprofile'"
 CHROOT_SHELL_SCRIPT
     chmod +x ~/bin/chroot-shell
 
     cat > ~/bin/chroot-umount << 'UMOUNT_SCRIPT'
 #!/data/data/com.termux/files/usr/bin/bash
-# chroot-umount - Unmount chroot filesystems
-
-CHROOT_DIR="$HOME/chroot-ubuntu"
-
+ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
 echo "Unmounting chroot filesystems..."
-su -c "umount $CHROOT_DIR/dev/pts" 2>/dev/null
-su -c "umount $CHROOT_DIR/dev/shm" 2>/dev/null
-su -c "umount $CHROOT_DIR/dev" 2>/dev/null
-su -c "umount $CHROOT_DIR/sys" 2>/dev/null
-su -c "umount $CHROOT_DIR/proc" 2>/dev/null
-su -c "umount $CHROOT_DIR/tmp" 2>/dev/null
+su -c "umount $ROOTFS/dev/pts 2>/dev/null; umount $ROOTFS/dev 2>/dev/null; umount $ROOTFS/sys 2>/dev/null; umount $ROOTFS/proc 2>/dev/null; umount $ROOTFS/tmp 2>/dev/null"
 echo "Done."
 UMOUNT_SCRIPT
     chmod +x ~/bin/chroot-umount
 }
 
-chroot_step_8() {
+chroot_step_7() {
     local USER="${PROOT_USER:-kemji}"
     if ! grep -q 'chroot-kde' ~/.bashrc 2>/dev/null; then
         cat >> ~/.bashrc << BASHRC_ADDON
@@ -1330,7 +1290,7 @@ BASHRC_ADDON
     fi
 }
 
-chroot_step_9() {
+chroot_step_8() {
     mkdir -p ~/.local/share/applications
     cat > ~/.local/share/applications/plasma-chroot.desktop << 'DESKTOP_FILE'
 [Desktop Entry]
@@ -1345,7 +1305,7 @@ StartupNotify=true
 DESKTOP_FILE
 }
 
-chroot_step_10() {
+chroot_step_9() {
     mkdir -p ~/.config
     cat > ~/.config/picom.conf << 'PICOM_CONFIG'
 backend = "xrender"
@@ -1416,13 +1376,12 @@ chroot_step_desc() {
         1) echo "Update packages and install tools" ;;
         2) echo "Download Ubuntu rootfs" ;;
         3) echo "Configure chroot mounts" ;;
-        4) echo "Create chroot user" ;;
-        5) echo "Install KDE Plasma in chroot" ;;
-        6) echo "Install GPU libs in chroot" ;;
-        7) echo "Create launcher scripts" ;;
-        8) echo "Update .bashrc" ;;
-        9) echo "Create desktop entry" ;;
-        10) echo "Create picom config" ;;
+        4) echo "Install KDE Plasma, Firefox, apps in chroot" ;;
+        5) echo "Create chroot user" ;;
+        6) echo "Create launcher scripts" ;;
+        7) echo "Update .bashrc" ;;
+        8) echo "Create desktop entry" ;;
+        9) echo "Create picom config" ;;
     esac
 }
 
@@ -1435,7 +1394,7 @@ if [ "$INSTALL_MODE" = "chroot" ]; then
     for i in $(seq 1 $total_steps_chroot); do
         desc=$(chroot_step_desc $i)
         case $i in
-            7|10) run_step "$i" "$desc" force || exit 1 ;;
+            6) run_step "$i" "$desc" force || exit 1 ;;
             *)    run_step "$i" "$desc" || exit 1 ;;
         esac
     done
