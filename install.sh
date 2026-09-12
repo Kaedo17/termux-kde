@@ -1151,7 +1151,8 @@ apt-get install -y --no-install-recommends \
     wget \
     curl \
     net-tools \
-    iputils-ping
+    iputils-ping \
+    locales
 locale-gen en_US.UTF-8 2>/dev/null
 cp /etc/xdg/menus/plasma-applications.menu /etc/xdg/menus/applications.menu 2>/dev/null
 echo 'LANG=en_US.UTF-8' > /etc/default/locale
@@ -1204,7 +1205,7 @@ sync_pulse_cookie() {
 }
 
 chroot_run() {
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:$PULSE_SOCK; $1'"
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:\$PULSE_SOCK; $1'"
 }
 
 stop_all() {
@@ -1215,14 +1216,14 @@ stop_all() {
 
     pkill -9 -f "termux-x11" 2>/dev/null
 
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; killall -9 kwin_x11 plasmashell plasma_session startplasma-x11 NetworkManager 2>/dev/null; read BUSPID < /tmp/android-bus.pid 2>/dev/null; [ -n \"$BUSPID\" ] && kill -9 $BUSPID 2>/dev/null; rm -f /tmp/dbus-* /tmp/android-bus.addr /tmp/android-bus.err /tmp/android-bus.pid /tmp/pulse-sock /run/dbus/pid /run/dbus/system_bus_socket 2>/dev/null'"
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; killall -9 kwin_x11 plasmashell plasma_session startplasma-x11 NetworkManager 2>/dev/null; cat /tmp/android-bus.pid 2>/dev/null | xargs -r kill -9 2>/dev/null; rm -f /tmp/dbus-* /tmp/android-bus.addr /tmp/android-bus.err /tmp/android-bus.pid /tmp/pulse-sock /run/dbus/pid /run/dbus/system_bus_socket 2>/dev/null'"
 
     echo "Stopped."
 }
 
 do_shell() {
     do_mount
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export HOME=/home/kemji; export USER=kemji; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:$PULSE_SOCK; exec bash --noprofile'"
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export HOME=/home/kemji; export USER=kemji; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:\$PULSE_SOCK; exec bash --noprofile'"
 }
 
 write_bus_conf() {
@@ -1235,7 +1236,7 @@ do_update() {
     $PREFIX/bin/pkg update -y 2>&1 | tail -3
 
     echo "Updating chroot packages..."
-    chroot_run 'DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && rm -f /var/lib/dpkg/info/snapd.* /var/lib/dpkg/info/apparmor.* 2>/dev/null && dpkg --configure -a --force-all 2>/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plasma-desktop plasma-workspace plasma-nm plasma-pa plasma-discover kwin-x11 kwin-wayland kde-style-breeze kde-cli-tools konsole dolphin kate ark gwenview kcalc okular systemsettings firefox dbus-x11 x11-xserver-utils x11-apps mesa-utils libgl1-mesa-dri libglx-mesa0 libegl-mesa0 pulseaudio sudo wget curl net-tools iputils-ping && locale-gen en_US.UTF-8 2>/dev/null && cp /etc/xdg/menus/plasma-applications.menu /etc/xdg/menus/applications.menu 2>/dev/null && echo "LANG=en_US.UTF-8" > /etc/default/locale' 2>&1 | tail -5
+    chroot_run 'DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && rm -f /var/lib/dpkg/info/snapd.* /var/lib/dpkg/info/apparmor.* 2>/dev/null && dpkg --configure -a --force-all 2>/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plasma-desktop plasma-workspace plasma-nm plasma-pa plasma-discover kwin-x11 kwin-wayland kde-style-breeze kde-cli-tools konsole dolphin kate ark gwenview kcalc okular systemsettings firefox dbus-x11 x11-xserver-utils x11-apps mesa-utils libgl1-mesa-dri libglx-mesa0 libegl-mesa0 pulseaudio sudo wget curl net-tools iputils-ping locales && locale-gen en_US.UTF-8 2>/dev/null && cp /etc/xdg/menus/plasma-applications.menu /etc/xdg/menus/applications.menu 2>/dev/null && echo "LANG=en_US.UTF-8" > /etc/default/locale' 2>&1 | tail -5
 
     echo "Restoring stock dbus config (if modified) and writing Android bus config..."
     chroot_run '[ -f /usr/share/dbus-1/system.conf.orig ] && cp /usr/share/dbus-1/system.conf.orig /usr/share/dbus-1/system.conf; rm -f /etc/dbus-1/system-local.conf'
@@ -1312,30 +1313,29 @@ export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
 read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null
-export PULSE_SERVER=unix:$PULSE_SOCK
+export PULSE_SERVER=unix:\$PULSE_SOCK
 chown -R kemji:kemji /home/kemji/.config/pulse 2>/dev/null
 mkdir -p /tmp/runtime-kemji 2>/dev/null
 chmod 700 /tmp/runtime-kemji 2>/dev/null
 
 killall -9 kwin_x11 plasmashell plasma_session startplasma-x11 NetworkManager 2>/dev/null
-read BUSPID < /tmp/android-bus.pid 2>/dev/null
-[ -n "$BUSPID" ] && kill -9 $BUSPID 2>/dev/null
+cat /tmp/android-bus.pid 2>/dev/null | xargs -r kill -9 2>/dev/null
 rm -f /tmp/dbus-* /tmp/android-bus.addr /tmp/android-bus.err /tmp/android-bus.pid /run/dbus/pid /run/dbus/system_bus_socket 2>/dev/null
 sleep 1
 
 # Android-compatible system bus (stock system bus cannot drop caps on Android kernels)
 if [ ! -f /etc/dbus-1/android-bus.conf ]; then
-    printf \"%s\n\" \"<!DOCTYPE busconfig PUBLIC '-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd'>\" \"<busconfig>\" \"<type>session</type>\" \"<listen>unix:path=/run/dbus/system_bus_socket</listen>\" \"<policy context='default'>\" \"<allow send_destination='*' eavesdrop='true'/>\" \"<allow eavesdrop='true'/>\" \"<allow own='*'/>\" \"</policy>\" \"</busconfig>\" > /etc/dbus-1/android-bus.conf
+    printf \"%s\n\" \"<!DOCTYPE busconfig PUBLIC \\\"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\\\" \\\"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\\\">\" \"<busconfig>\" \"<type>session</type>\" \"<listen>unix:path=/run/dbus/system_bus_socket</listen>\" \"<policy context=\\\"default\\\">\" \"<allow send_destination=\\\"*\\\" eavesdrop=\\\"true\\\"/>\" \"<allow eavesdrop=\\\"true\\\"/>\" \"<allow own=\\\"*\\\"/>\" \"</policy>\" \"</busconfig>\" > /etc/dbus-1/android-bus.conf
 fi
 dbus-daemon --config-file=/etc/dbus-1/android-bus.conf --print-address=1 --nopidfile > /tmp/android-bus.addr 2> /tmp/android-bus.err &
-echo $! > /tmp/android-bus.pid
+echo \$! > /tmp/android-bus.pid
 sleep 1
 
 # NetworkManager on the system bus
 NetworkManager 2>/dev/null &
 sleep 2
 
-eval $(dbus-launch --sh-syntax)
+eval \$(dbus-launch --sh-syntax)
 export DBUS_SESSION_BUS_ADDRESS
 
 kwin_x11 --replace &
@@ -1357,7 +1357,7 @@ PLASMA_SCRIPT
 PREFIX="/data/data/com.termux/files/usr"
 ROOTFS="$PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs"
 su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; mkdir -p $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
-su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export HOME=/home/kemji; export USER=kemji; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:$PULSE_SOCK; exec bash --noprofile'"
+su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export HOME=/home/kemji; export USER=kemji; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:\$PULSE_SOCK; exec bash --noprofile'"
 CHROOT_SHELL_SCRIPT
     chmod +x ~/bin/chroot-shell
 

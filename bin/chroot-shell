@@ -1,14 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# chroot-shell - Open a shell in the Ubuntu chroot
-ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
-CHROOT_USER="kemji"
-
-su -c "mount -t proc proc $ROOTFS/proc" 2>/dev/null
-su -c "mount -t sysfs sysfs $ROOTFS/sys" 2>/dev/null
-su -c "mount --bind /dev $ROOTFS/dev" 2>/dev/null
-su -c "mount --bind /dev/pts $ROOTFS/dev/pts" 2>/dev/null
-su -c "mount --bind /data/data/com.termux/files/usr/tmp $ROOTFS/tmp" 2>/dev/null
-su -c "cp /etc/resolv.conf $ROOTFS/etc/resolv.conf" 2>/dev/null
-
-echo "Entering chroot as $CHROOT_USER..."
-su -c "chroot $ROOTFS /bin/su - $CHROOT_USER"
+PREFIX="/data/data/com.termux/files/usr"
+ROOTFS="$PREFIX/var/lib/proot-distro/containers/ubuntu/rootfs"
+su -c "mount -t proc proc $ROOTFS/proc 2>/dev/null; mount -t sysfs sysfs $ROOTFS/sys 2>/dev/null; mount --bind /dev $ROOTFS/dev 2>/dev/null; mount --bind /dev/pts $ROOTFS/dev/pts 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/tmp 2>/dev/null; mkdir -p $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; mount --bind $PREFIX/tmp $ROOTFS/data/data/com.termux/files/usr/tmp 2>/dev/null; cp $PREFIX/etc/resolv.conf $ROOTFS/etc/resolv.conf 2>/dev/null"
+su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export HOME=/home/kemji; export USER=kemji; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:\$PULSE_SOCK; exec bash --noprofile'"
