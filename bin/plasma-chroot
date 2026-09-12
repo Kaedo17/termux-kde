@@ -19,7 +19,7 @@ sync_pulse_cookie() {
 }
 
 chroot_run() {
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:\$PULSE_SOCK; $1'"
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; PULSE_SOCK=\"\"; test -f /tmp/pulse-sock && read PULSE_SOCK < /tmp/pulse-sock; export PULSE_SERVER=unix:\$PULSE_SOCK; $1'"
 }
 
 stop_all() {
@@ -37,7 +37,7 @@ stop_all() {
 
 do_shell() {
     do_mount
-    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export HOME=/home/kemji; export USER=kemji; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null; export PULSE_SERVER=unix:\$PULSE_SOCK; exec bash --noprofile'"
+    su -c "chroot $ROOTFS /bin/bash --noprofile -c 'export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin; export SHELL=/bin/bash; export HOME=/home/kemji; export USER=kemji; export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket; PULSE_SOCK=\"\"; test -f /tmp/pulse-sock && read PULSE_SOCK < /tmp/pulse-sock; export PULSE_SERVER=unix:\$PULSE_SOCK; exec bash --noprofile'"
 }
 
 write_bus_conf() {
@@ -162,7 +162,8 @@ export DESKTOP_SESSION=plasma
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
-read PULSE_SOCK < /tmp/pulse-sock 2>/dev/null
+PULSE_SOCK=""
+test -f /tmp/pulse-sock && read PULSE_SOCK < /tmp/pulse-sock
 export PULSE_SERVER=unix:\$PULSE_SOCK
 chown -R kemji:kemji /home/kemji/.config/pulse 2>/dev/null
 mkdir -p /tmp/runtime-kemji 2>/dev/null
