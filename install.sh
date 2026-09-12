@@ -1123,6 +1123,9 @@ apt-get update
 apt-get install -y --no-install-recommends \
     plasma-desktop \
     plasma-workspace \
+    plasma-nm \
+    plasma-pa \
+    plasma-discover \
     kwin-x11 \
     kwin-wayland \
     kde-style-breeze \
@@ -1149,6 +1152,9 @@ apt-get install -y --no-install-recommends \
     curl \
     net-tools \
     iputils-ping
+locale-gen en_US.UTF-8 2>/dev/null
+cp /etc/xdg/menus/plasma-applications.menu /etc/xdg/menus/applications.menu 2>/dev/null
+echo 'LANG=en_US.UTF-8' > /etc/default/locale
 \""
 }
 
