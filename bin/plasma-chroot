@@ -148,7 +148,7 @@ while [ ! -e "${TMPDIR}/.X11-unix/X0" ] && [ $TRIES -lt 15 ]; do sleep 1; TRIES=
 echo "X11 ready. Starting KDE..."
 
 # Start KDE in chroot (single-quoted: no host expansion inside)
-su -c "chroot $ROOTFS /bin/bash --noprofile -c '
+su -s /bin/bash -c "chroot $ROOTFS /bin/bash --noprofile -c '
 export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin
 export SHELL=/bin/bash
 export DISPLAY=:0
@@ -161,6 +161,8 @@ export XDG_CURRENT_DESKTOP=KDE
 export DESKTOP_SESSION=plasma
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
+export MOZ_ALLOW_ROOT=1
+export QT_LOGGING_RULES="*.debug=false;pipewire.debug=false;kpipewire.debug=false"
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
 PULSE_SOCK=""
 test -f /tmp/pulse-sock && read PULSE_SOCK < /tmp/pulse-sock
