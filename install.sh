@@ -1119,6 +1119,11 @@ export PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin
 export DEBIAN_FRONTEND=noninteractive
 rm -f /var/lib/dpkg/info/snapd.* /var/lib/dpkg/info/apparmor.* 2>/dev/null
 dpkg --configure -a --force-all 2>/dev/null
+install -d -m 0755 /etc/apt/keyrings
+wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O /etc/apt/keyrings/packages.mozilla.org.asc
+echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" > /etc/apt/sources.list.d/mozilla.list
+printf '%s\n' 'Package: *' 'Pin: origin packages.mozilla.org' 'Pin-Priority: 1000' '' 'Package: firefox*' 'Pin: release o=Ubuntu' 'Pin-Priority: -1' > /etc/apt/preferences.d/mozilla
+printf '%s\n' 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-android-sandbox
 apt-get update
 apt-get install -y --no-install-recommends \
     plasma-desktop \
@@ -1152,7 +1157,9 @@ apt-get install -y --no-install-recommends \
     curl \
     net-tools \
     iputils-ping \
-    locales
+    locales \
+    gnupg \
+    gpgv
 locale-gen en_US.UTF-8 2>/dev/null
 cp /etc/xdg/menus/plasma-applications.menu /etc/xdg/menus/applications.menu 2>/dev/null
 echo 'LANG=en_US.UTF-8' > /etc/default/locale
@@ -1239,7 +1246,8 @@ do_update() {
     $PREFIX/bin/pkg update -y 2>&1 | tail -3
 
     echo "Updating chroot packages..."
-    chroot_run 'DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && rm -f /var/lib/dpkg/info/snapd.* /var/lib/dpkg/info/apparmor.* 2>/dev/null && dpkg --configure -a --force-all 2>/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plasma-desktop plasma-workspace plasma-nm plasma-pa plasma-discover kwin-x11 kwin-wayland kde-style-breeze kde-cli-tools konsole dolphin kate ark gwenview kcalc okular systemsettings firefox dbus-x11 x11-xserver-utils x11-apps mesa-utils libgl1-mesa-dri libglx-mesa0 libegl-mesa0 pulseaudio sudo wget curl net-tools iputils-ping locales && locale-gen en_US.UTF-8 2>/dev/null && cp /etc/xdg/menus/plasma-applications.menu /etc/xdg/menus/applications.menu 2>/dev/null && echo "LANG=en_US.UTF-8" > /etc/default/locale' 2>&1 | tail -5
+    chroot_run 'install -d -m 0755 /etc/apt/keyrings && wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O /etc/apt/keyrings/packages.mozilla.org.asc && echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" > /etc/apt/sources.list.d/mozilla.list && printf "%s\n" "Package: *" "Pin: origin packages.mozilla.org" "Pin-Priority: 1000" "" "Package: firefox*" "Pin: release o=Ubuntu" "Pin-Priority: -1" > /etc/apt/preferences.d/mozilla && printf "%s\n" "APT::Sandbox::User \"root\";" > /etc/apt/apt.conf.d/99-android-sandbox && DEBIAN_FRONTEND=noninteractive apt-get update' 2>&1 | tail -2
+    chroot_run 'DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && rm -f /var/lib/dpkg/info/snapd.* /var/lib/dpkg/info/apparmor.* 2>/dev/null && dpkg --configure -a --force-all 2>/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plasma-desktop plasma-workspace plasma-nm plasma-pa plasma-discover kwin-x11 kwin-wayland kde-style-breeze kde-cli-tools konsole dolphin kate ark gwenview kcalc okular systemsettings firefox dbus-x11 x11-xserver-utils x11-apps mesa-utils libgl1-mesa-dri libglx-mesa0 libegl-mesa0 pulseaudio sudo wget curl net-tools iputils-ping locales gnupg gpgv && locale-gen en_US.UTF-8 2>/dev/null && cp /etc/xdg/menus/plasma-applications.menu /etc/xdg/menus/applications.menu 2>/dev/null && echo "LANG=en_US.UTF-8" > /etc/default/locale' 2>&1 | tail -5
 
     echo "Restoring stock dbus config (if modified) and writing Android bus config..."
     chroot_run '[ -f /usr/share/dbus-1/system.conf.orig ] && cp /usr/share/dbus-1/system.conf.orig /usr/share/dbus-1/system.conf; rm -f /etc/dbus-1/system-local.conf'
