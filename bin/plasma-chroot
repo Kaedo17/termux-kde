@@ -49,6 +49,29 @@ do_update() {
     echo "Updating Termux packages..."
     $PREFIX/bin/pkg update -y 2>&1 | tail -3
 
+    # Restore GNU coreutils if rust-coreutils has corrupted them
+    local COREUTILS_DEB="$PREFIX/tmp/coreutils.deb"
+    local EXTRACT_DIR="$PREFIX/tmp/coreutils-extract"
+    local NEEDS_RESTORE=$(su -c "readlink $ROOTFS/bin/ls 2>/dev/null" | grep -c cargo || true)
+    if [ "$NEEDS_RESTORE" -gt 0 ] || [ ! -x "$ROOTFS/bin/ls" ]; then
+        echo "Restoring GNU coreutils (rust-coreutils detected)..."
+        su -c "find $ROOTFS/bin $ROOTFS/usr/bin -type l -exec readlink {} + 2>/dev/null" | grep -q cargo && \
+        su -c "find $ROOTFS/bin $ROOTFS/usr/bin -type l" | while read f; do
+            target=$(su -c "readlink $f" 2>/dev/null)
+            case "$target" in *cargo*|*rust*) su -c "rm -f $f" ;; esac
+        done
+        if [ ! -f "$COREUTILS_DEB" ]; then
+            /data/data/com.termux/files/usr/bin/wget -q 'http://ports.ubuntu.com/ubuntu-ports/pool/main/c/coreutils/coreutils_9.4-3ubuntu6_arm64.deb' -O "$COREUTILS_DEB" 2>/dev/null
+        fi
+        if [ -f "$COREUTILS_DEB" ]; then
+            rm -rf "$EXTRACT_DIR" && mkdir -p "$EXTRACT_DIR"
+            dpkg-deb -x "$COREUTILS_DEB" "$EXTRACT_DIR" 2>/dev/null
+            su -c "cp $EXTRACT_DIR/usr/bin/* $ROOTFS/bin/ 2>/dev/null; cp $EXTRACT_DIR/usr/bin/* $ROOTFS/usr/bin/ 2>/dev/null; chmod 755 $ROOTFS/bin/ls $ROOTFS/bin/cat $ROOTFS/bin/install $ROOTFS/bin/mkdir $ROOTFS/bin/ln $ROOTFS/bin/chmod $ROOTFS/bin/chown $ROOTFS/bin/cp $ROOTFS/bin/mv $ROOTFS/bin/rm $ROOTFS/bin/sort $ROOTFS/bin/head $ROOTFS/bin/tail $ROOTFS/bin/grep $ROOTFS/bin/find $ROOTFS/bin/sed $ROOTFS/bin/awk $ROOTFS/bin/date $ROOTFS/bin/echo $ROOTFS/bin/env $ROOTFS/bin/true $ROOTFS/bin/false 2>/dev/null"
+            rm -rf "$EXTRACT_DIR"
+            echo "GNU coreutils restored."
+        fi
+    fi
+
     echo "Updating chroot packages..."
     chroot_run 'install -d -m 0755 /etc/apt/keyrings && wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O /etc/apt/keyrings/packages.mozilla.org.asc && echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" > /etc/apt/sources.list.d/mozilla.list && printf "%s\n" "Package: *" "Pin: origin packages.mozilla.org" "Pin-Priority: 1000" "" "Package: firefox*" "Pin: release o=Ubuntu" "Pin-Priority: -1" > /etc/apt/preferences.d/mozilla && printf "%s\n" "APT::Sandbox::User \"root\";" > /etc/apt/apt.conf.d/99-android-sandbox && DEBIAN_FRONTEND=noninteractive apt-get update' 2>&1 | tail -2
     chroot_run 'DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && rm -f /var/lib/dpkg/info/snapd.* /var/lib/dpkg/info/apparmor.* 2>/dev/null && dpkg --configure -a --force-all 2>/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plasma-desktop plasma-workspace plasma-nm plasma-pa plasma-discover kwin-x11 kwin-wayland kde-style-breeze kde-cli-tools konsole dolphin kate ark gwenview kcalc okular systemsettings firefox dbus-x11 x11-xserver-utils x11-apps mesa-utils libgl1-mesa-dri libglx-mesa0 libegl-mesa0 pulseaudio sudo wget curl net-tools iputils-ping locales gnupg gpgv && locale-gen en_US.UTF-8 2>/dev/null && cp /etc/xdg/menus/plasma-applications.menu /etc/xdg/menus/applications.menu 2>/dev/null && echo "LANG=en_US.UTF-8" > /etc/default/locale' 2>&1 | tail -5
@@ -91,6 +114,11 @@ do_mount
 
 # Ensure konsole shell fixes persist across reboots
 su -c "mkdir -p $ROOTFS/system/bin && ln -sf /bin/bash $ROOTFS/system/bin/sh 2>/dev/null; echo 'SHELL=/bin/bash' > $ROOTFS/etc/environment 2>/dev/null; cp $ROOTFS/home/kemji/.local/share/konsole/Shell.profile $ROOTFS/usr/share/konsole/Shell.profile 2>/dev/null; exit 0"
+
+# Quick coreutils check - restore if rust-coreutils corrupted
+su -c "readlink $ROOTFS/bin/ls 2>/dev/null" | grep -q cargo && {
+    echo "Warning: rust-coreutils detected, run 'plasma-chroot update' to fix"
+}
 
 sync_pulse_cookie
 
