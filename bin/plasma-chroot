@@ -33,7 +33,7 @@ do_update() {
     $PREFIX/bin/pkg update -y 2>&1 | /data/data/com.termux/files/usr/bin/tail -3
 
     echo "Updating chroot packages..."
-    chroot_run 'DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && rm -f /var/lib/dpkg/info/snapd.* /var/lib/dpkg/info/apparmor.* 2>/dev/null && dpkg --configure -a --force-all 2>/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plasma-desktop plasma-workspace kwin-x11 kwin-wayland kde-style-breeze kde-cli-tools konsole dolphin kate ark gwenview kcalc okular systemsettings firefox dbus-x11 x11-xserver-utils x11-apps mesa-utils libgl1-mesa-dri libgl1-mesa-glx libgles2-mesa libegl1-mesa pulseaudio sudo wget curl net-tools iputils-ping' 2>&1 | /data/data/com.termux/files/usr/bin/tail -5
+    chroot_run 'DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && rm -f /var/lib/dpkg/info/snapd.* /var/lib/dpkg/info/apparmor.* 2>/dev/null && dpkg --configure -a --force-all 2>/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends plasma-desktop plasma-workspace kwin-x11 kwin-wayland kde-style-breeze kde-cli-tools konsole dolphin kate ark gwenview kcalc okular systemsettings firefox dbus-x11 x11-xserver-utils x11-apps mesa-utils libgl1-mesa-dri libglx-mesa0 libegl-mesa0 pulseaudio sudo wget curl net-tools iputils-ping' 2>&1 | /data/data/com.termux/files/usr/bin/tail -5
 
     echo "Updating scripts from git..."
     REPO_DIR="$HOME/termux-kde"

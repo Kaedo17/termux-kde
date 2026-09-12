@@ -1141,9 +1141,8 @@ apt-get install -y --no-install-recommends \
     x11-apps \
     mesa-utils \
     libgl1-mesa-dri \
-    libgl1-mesa-glx \
-    libgles2-mesa \
-    libegl1-mesa \
+    libglx-mesa0 \
+    libegl-mesa0 \
     pulseaudio \
     sudo \
     wget \
