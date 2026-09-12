@@ -58,7 +58,7 @@ do_update() {
     write_bus_conf
 
     echo "Writing default konsole profile (explicit /bin/bash)..."
-    chroot_run 'mkdir -p /home/kemji/.local/share/konsole && printf "%s\n" "[General]" "Command=/bin/bash" "Name=Shell" "Parent=FALLBACK/" > /home/kemji/.local/share/konsole/Shell.profile && grep -q DefaultProfile /home/kemji/.config/konsolerc 2>/dev/null || printf "\n[Desktop Entry]\nDefaultProfile=Shell.profile\n" >> /home/kemji/.config/konsolerc'
+    chroot_run 'mkdir -p /home/kemji/.local/share/konsole /usr/share/konsole /etc/xdg/konsole /system/bin && printf "%s\n" "[General]" "Command=/bin/bash" "Name=Shell" "Parent=FALLBACK/" > /home/kemji/.local/share/konsole/Shell.profile && cp /home/kemji/.local/share/konsole/Shell.profile /usr/share/konsole/Shell.profile 2>/dev/null && grep -q DefaultProfile /home/kemji/.config/konsolerc 2>/dev/null || printf "\n[Desktop Entry]\nDefaultProfile=Shell.profile\n" >> /home/kemji/.config/konsolerc && ln -sf /bin/bash /system/bin/sh && echo "SHELL=/bin/bash" > /etc/environment'
 
     echo "Syncing PulseAudio cookie..."
     sync_pulse_cookie
@@ -88,6 +88,10 @@ stop_all 2>/dev/null
 sleep 1
 
 do_mount
+
+# Ensure konsole shell fixes persist across reboots
+su -c "mkdir -p $ROOTFS/system/bin && ln -sf /bin/bash $ROOTFS/system/bin/sh 2>/dev/null; echo 'SHELL=/bin/bash' > $ROOTFS/etc/environment 2>/dev/null; cp $ROOTFS/home/kemji/.local/share/konsole/Shell.profile $ROOTFS/usr/share/konsole/Shell.profile 2>/dev/null; exit 0"
+
 sync_pulse_cookie
 
 # PulseAudio
